@@ -1,0 +1,418 @@
+/* Global Styles */
+@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap');
+
+:root {
+    --primary-color: #8b5a2b;
+    --secondary-color: #d4a76a;
+    --accent-color: #703e15;
+    --background-color: #f9e9c3;
+    --text-color: #3e2723;
+    --border-color: #8b5a2b;
+    --path-color: #b08968;
+    --grass-color: #7d934c;
+    --water-color: #5b87a7;
+    --rock-color: #8a7f77;
+    --swamp-color: #5c7358;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'MedievalSharp', cursive;
+    background-color: var(--background-color);
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23f9e9c3" /><path d="M0 0L100 100M100 0L0 100" stroke="%23d4a76a22" stroke-width="1"/></svg>');
+    color: var(--text-color);
+}
+
+/* Game Container */
+.game-container {
+    width: 800px;
+    margin: 20px auto;
+    text-align: center;
+    background-color: var(--background-color);
+    border: 8px solid var(--primary-color);
+    border-radius: 8px;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+    padding: 15px;
+    position: relative;
+}
+
+h1 {
+    color: var(--accent-color);
+    text-shadow: 2px 2px 2px rgba(0, 0, 0, 0.2);
+    font-size: 2.5em;
+    margin: 10px 0;
+    letter-spacing: 2px;
+}
+
+/* Canvas */
+canvas {
+    border: 4px solid var(--border-color);
+    background-color: var(--grass-color);
+    border-radius: 4px;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+}
+
+/* Map Selection */
+.map-selection {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 15px;
+    gap: 10px;
+}
+
+.map-button {
+    padding: 8px 15px;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: 'MedievalSharp', cursive;
+    font-size: 16px;
+    transition: all 0.2s;
+}
+
+.map-button:hover {
+    background-color: var(--primary-color);
+    color: var(--background-color);
+}
+
+.map-button.selected {
+    background-color: var(--accent-color);
+    color: var(--background-color);
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+}
+
+/* Game Info */
+.game-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 15px 0;
+    padding: 10px;
+    background-color: var(--secondary-color);
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.2);
+}
+
+.resource-info {
+    display: flex;
+    gap: 20px;
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--text-color);
+}
+
+.wave-timer {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+#wave-countdown {
+    font-size: 16px;
+    color: var(--text-color);
+}
+
+.start-button {
+    padding: 8px 15px;
+    background-color: var(--accent-color);
+    color: var(--background-color);
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: 'MedievalSharp', cursive;
+    font-size: 16px;
+    transition: all 0.2s;
+}
+
+.start-button:hover {
+    background-color: #5e3211;
+    transform: scale(1.05);
+}
+
+.start-button:disabled {
+    background-color: #a18367;
+    color: #ccc;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Controls */
+.controls {
+    margin-top: 15px;
+    display: flex;
+    justify-content: center;
+}
+
+.tower-selection {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.tower-button {
+    width: 90px;
+    height: 90px;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-around;
+    padding: 8px;
+    transition: all 0.2s;
+    font-family: 'MedievalSharp', cursive;
+}
+
+.tower-button:hover {
+    background-color: var(--primary-color);
+    color: var(--background-color);
+    transform: translateY(-3px);
+}
+
+.tower-button.selected {
+    background-color: var(--accent-color);
+    color: var(--background-color);
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+    transform: translateY(-3px);
+}
+
+.tower-button:disabled {
+    background-color: #a18367;
+    color: #ccc;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.tower-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+.basic-tower {
+    background-color: #3498db;
+    position: relative;
+}
+
+.basic-tower::after {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 15px;
+    background-color: #333;
+    top: 5px;
+}
+
+.sniper-tower {
+    background-color: #e74c3c;
+    position: relative;
+}
+
+.sniper-tower::after {
+    content: "";
+    position: absolute;
+    width: 20px;
+    height: 6px;
+    background-color: #333;
+    top: 17px;
+}
+
+.slow-tower {
+    background-color: #1abc9c;
+    position: relative;
+}
+
+.slow-tower::after {
+    content: "❄";
+    font-size: 20px;
+    color: white;
+}
+
+.bomb-tower {
+    background-color: #f1c40f;
+    position: relative;
+}
+
+.bomb-tower::after {
+    content: "💣";
+    font-size: 16px;
+}
+
+.tower-label {
+    font-size: 12px;
+    margin-top: 5px;
+    text-align: center;
+    line-height: 1.1;
+}
+
+/* Upgrade Panel */
+.upgrade-panel {
+    position: absolute;
+    width: 280px;
+    background-color: var(--background-color);
+    border: 4px solid var(--border-color);
+    border-radius: 8px;
+    padding: 15px;
+    color: var(--text-color);
+    display: none;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+}
+
+.tower-info {
+    margin-bottom: 15px;
+    font-size: 14px;
+    text-align: left;
+}
+
+.upgrade-path {
+    height: 80px;
+    background-color: var(--secondary-color);
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    margin-bottom: 15px;
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    padding: 5px;
+}
+
+.upgrade-progress {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.level-marker {
+    width: 40px;
+    height: 40px;
+    background-color: var(--background-color);
+    border: 2px solid var(--border-color);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 18px;
+    position: relative;
+    z-index: 2;
+}
+
+.level-marker.achieved {
+    background-color: var(--accent-color);
+    color: var(--background-color);
+}
+
+.level-marker.current {
+    box-shadow: 0 0 10px gold;
+}
+
+.level-path {
+    height: 4px;
+    background-color: var(--border-color);
+    flex-grow: 1;
+    position: relative;
+    top: 2px;
+    z-index: 1;
+}
+
+.level-path.achieved {
+    background-color: var(--accent-color);
+}
+
+.upgrade-button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 8px;
+    background-color: var(--accent-color);
+    color: var(--background-color);
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: 'MedievalSharp', cursive;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.upgrade-button:hover {
+    background-color: #5e3211;
+    transform: scale(1.02);
+}
+
+.upgrade-button:disabled {
+    background-color: #a18367;
+    color: #ccc;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.sell-button {
+    background-color: #c0392b;
+}
+
+.sell-button:hover {
+    background-color: #a5281b;
+}
+
+.close-button {
+    background-color: #7f8c8d;
+}
+
+.close-button:hover {
+    background-color: #636e72;
+}
+
+/* Tower Levels Visual */
+.tower-level {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background-color: gold;
+    border-radius: 50%;
+    border: 1px solid #5c4504;
+}
+
+/* Level 1 indicators */
+.level-1-indicator-1 {
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* Level 2 indicators */
+.level-2-indicator-1 {
+    top: -4px;
+    left: 30%;
+}
+.level-2-indicator-2 {
+    top: -4px;
+    right: 30%;
+}
+
+/* Level 3 indicators */
+.level-3-indicator-1 {
+    top: -4px;
+    left: 20%;
+}
+.level-3-indicator-2 {
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+.level-3-indicator-3 {
+    top: -4px;
+    right: 20%;
+}

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medieval Tower Defense</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="game-container">
+        <h1>Medieval Defense</h1>
+        <div class="map-selection">
+            <button id="map1" class="map-button selected">Grüntal</button>
+            <button id="map2" class="map-button">Felspass</button>
+            <button id="map3" class="map-button">Sumpfland</button>
+        </div>
+        <div class="game-info">
+            <div class="resource-info">
+                <div>Leben: <span id="lives">10</span></div>
+                <div>Gold: <span id="gold">100</span></div>
+                <div>Welle: <span id="wave">0</span></div>
+            </div>
+            <div class="wave-timer">
+                <span id="wave-countdown">Nächste Welle in: <span id="countdown">Bereit</span></span>
+                <button id="startWave" class="start-button">Welle starten</button>
+            </div>
+        </div>
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
+        <div class="controls">
+            <div class="tower-selection">
+                <button id="basicTower" class="tower-button">
+                    <div class="tower-icon basic-tower"></div>
+                    <div class="tower-label">Basis Turm (25)</div>
+                </button>
+                <button id="sniperTower" class="tower-button">
+                    <div class="tower-icon sniper-tower"></div>
+                    <div class="tower-label">Sniper Turm (50)</div>
+                </button>
+                <button id="slowTower" class="tower-button">
+                    <div class="tower-icon slow-tower"></div>
+                    <div class="tower-label">Frost Turm (40)</div>
+                </button>
+                <button id="bombTower" class="tower-button">
+                    <div class="tower-icon bomb-tower"></div>
+                    <div class="tower-label">Bomben Turm (75)</div>
+                </button>
+            </div>
+        </div>
+        <div id="upgradePanel" class="upgrade-panel">
+            <div id="towerInfo" class="tower-info"></div>
+            <div class="upgrade-path">
+                <div id="currentLevel" class="upgrade-progress"></div>
+            </div>
+            <div class="upgrade-buttons">
+                <button id="upgradeDirectly" class="upgrade-button">Direkt upgraden auf Level <span
+                        id="targetLevel">1</span> (<span id="upgradeCost">0</span> Gold)</button>
+                <button id="sellTower" class="upgrade-button sell-button">Turm verkaufen (<span id="sellValue">0</span>
+                    Gold)</button>
+                <button id="closeUpgrade" class="upgrade-button close-button">Schließen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="map.js"></script>
+    <script src="enemies.js"></script>
+    <script src="towers.js"></script>
+    <script src="ui.js"></script>
+    <script src="game.js"></script>
+</body>
+
+</html>
