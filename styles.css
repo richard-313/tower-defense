@@ -152,56 +152,6 @@ canvas {
     transform: none;
 }
 
-/* Controls */
-.controls {
-    margin-top: 15px;
-    display: flex;
-    justify-content: center;
-}
-
-.tower-selection {
-    display: flex;
-    gap: 15px;
-    justify-content: center;
-}
-
-.tower-button {
-    width: 90px;
-    height: 90px;
-    background-color: var(--secondary-color);
-    color: var(--text-color);
-    border: 2px solid var(--border-color);
-    border-radius: 6px;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-around;
-    padding: 8px;
-    transition: all 0.2s;
-    font-family: 'MedievalSharp', cursive;
-}
-
-.tower-button:hover {
-    background-color: var(--primary-color);
-    color: var(--background-color);
-    transform: translateY(-3px);
-}
-
-.tower-button.selected {
-    background-color: var(--accent-color);
-    color: var(--background-color);
-    box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
-    transform: translateY(-3px);
-}
-
-.tower-button:disabled {
-    background-color: #a18367;
-    color: #ccc;
-    cursor: not-allowed;
-    transform: none;
-}
-
 .tower-icon {
     width: 40px;
     height: 40px;
@@ -428,4 +378,149 @@ canvas {
 .level-3-indicator-3 {
     top: -4px;
     right: 20%;
+}
+
+
+
+
+
+/* Radial Tower Menu */
+.radial-menu {
+    position: fixed;
+    /* Absolute zum Viewport statt zum Container */
+    z-index: 100;
+    pointer-events: none;
+    display: none;
+    /* Keine Größe oder Margin definieren */
+}
+
+.tower-option-radial {
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background-color: var(--secondary-color);
+    border: 3px solid var(--border-color);
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    pointer-events: auto;
+    /* Re-aktiviert Klick-Events */
+    margin: -25px;
+    /* Zentriert das Element an seinem Positionspunkt */
+}
+
+.tower-option-radial:hover {
+    box-shadow: 0 0 15px rgba(255, 255, 0, 0.7);
+    border-color: var(--accent-color);
+    transform: scale(1.2);
+}
+
+.tower-option-radial.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.tower-option-radial.disabled:hover {
+    transform: none;
+}
+
+/* Position der vier Türme */
+.tower-option-radial:nth-child(1) {
+    /* Oben */
+    top: -60px;
+    left: 0px;
+}
+
+.tower-option-radial:nth-child(2) {
+    /* Rechts */
+    top: 0px;
+    left: 60px;
+}
+
+.tower-option-radial:nth-child(3) {
+    /* Unten */
+    top: 60px;
+    left: 0px;
+}
+
+.tower-option-radial:nth-child(4) {
+    /* Links */
+    top: 0px;
+    left: -60px;
+}
+
+/* Hover-Effekte sollten die Position nicht verändern */
+.tower-option-radial:hover {
+    z-index: 101;
+    /* Stellt sicher, dass Hover-Elemente oben liegen */
+}
+
+/* Preis-Label als Tooltip */
+.tower-option-radial::after {
+    content: attr(data-cost) + " Gold";
+    position: absolute;
+    bottom: -25px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+}
+
+.tower-option-radial:hover::after {
+    opacity: 1;
+}
+
+/* Turm-Icons für das Radial-Menü */
+.tower-option-radial .tower-icon {
+    width: 30px;
+    height: 30px;
+}
+
+/* Cancel-Button im Zentrum des Radialmenüs */
+.tower-option-cancel {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.8);
+    border: 2px solid #c0392b;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    pointer-events: auto;
+    /* Zentriert auf der Mausposition */
+    top: 0;
+    left: 0;
+    margin: -15px;
+    /* Zentrieren (50% der Elementgröße) */
+    z-index: 102;
+    /* Über den anderen Turm-Optionen */
+    transition: all 0.15s ease;
+}
+
+.tower-option-cancel:hover {
+    background-color: #e74c3c;
+    transform: scale(1.2);
+}
+
+.cancel-icon {
+    color: #c0392b;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.tower-option-cancel:hover .cancel-icon {
+    color: #ffffff;
 }

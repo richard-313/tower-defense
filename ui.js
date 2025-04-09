@@ -6,10 +6,15 @@ class GameUI {
         this.towerManager = towerManager;
         this.enemyManager = enemyManager;
 
-        this.selectedTowerType = null;
         this.gold = 100;
         this.lives = 10;
         this.selectedTowerForUpgrade = null;
+
+        // Parameter für die Turmauswahl per Radialmenü
+        this.selectedTileX = null;
+        this.selectedTileY = null;
+        this.clickX = null;
+        this.clickY = null;
 
         // Mausposition-Tracking
         this.mouseX = null;
@@ -22,13 +27,25 @@ class GameUI {
         this.startWaveButton = document.getElementById('startWave');
         this.countdownElement = document.getElementById('countdown');
 
-        // Turm-Buttons
-        this.towerButtons = {
-            basic: document.getElementById('basicTower'),
-            sniper: document.getElementById('sniperTower'),
-            slow: document.getElementById('slowTower'),
-            bomb: document.getElementById('bombTower')
+        // Radial-Menü-Element
+        this.radialMenu = document.getElementById('radialTowerMenu');
+        this.radialCancelButton = document.getElementById('radialCancelButton');
+
+        // Turm-Optionen im Radialmenü
+        this.radialTowerOptions = {
+            basic: document.getElementById('radialBasicTower'),
+            sniper: document.getElementById('radialSniperTower'),
+            slow: document.getElementById('radialSlowTower'),
+            bomb: document.getElementById('radialBombTower')
         };
+
+
+
+        // Aktualisiere die Kosten in den data-cost Attributen (falls sich towerTypes ändert)
+        this.radialTowerOptions.basic.setAttribute('data-cost', towerTypes.basic.cost);
+        this.radialTowerOptions.sniper.setAttribute('data-cost', towerTypes.sniper.cost);
+        this.radialTowerOptions.slow.setAttribute('data-cost', towerTypes.slow.cost);
+        this.radialTowerOptions.bomb.setAttribute('data-cost', towerTypes.bomb.cost);
 
         // Karten-Buttons
         this.mapButtons = {
@@ -53,10 +70,19 @@ class GameUI {
     }
 
     initEventListeners() {
-        // Turm-Auswahlbuttons
-        for (const [type, button] of Object.entries(this.towerButtons)) {
-            button.addEventListener('click', () => this.selectTowerType(type));
+        // Events für Turm-Optionen im Radialmenü
+        for (const [type, element] of Object.entries(this.radialTowerOptions)) {
+            element.addEventListener('click', (e) => {
+                // Verhindern, dass das Klick-Event bis zum Canvas durchdringt
+                e.stopPropagation();
+                this.selectTowerFromRadial(type);
+            });
         }
+        // Event für den Cancel-Button
+        this.radialCancelButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.hideRadialMenu();
+        });
 
         // Kartenauswahlbuttons
         for (const [mapId, button] of Object.entries(this.mapButtons)) {
@@ -74,6 +100,14 @@ class GameUI {
         this.upgradeDirectlyButton.addEventListener('click', () => this.upgradeTower());
         this.sellTowerButton.addEventListener('click', () => this.sellTower());
         this.closeUpgradeButton.addEventListener('click', () => this.closeUpgradePanel());
+
+        // Event-Listener, um Radialmenü zu schließen, wenn irgendwo anders geklickt wird
+        document.addEventListener('click', (e) => {
+            // Wenn weder auf das Radialmenü noch auf den Canvas geklickt wurde
+            if (this.radialMenu.style.display === 'block' && !this.radialMenu.contains(e.target) && e.target !== this.app.view) {
+                this.hideRadialMenu();
+            }
+        });
     }
 
     changeMap(mapId) {
@@ -113,28 +147,76 @@ class GameUI {
         this.towerManager.projectiles = [];
 
         // UI-Zustand zurücksetzen
-        this.selectedTowerType = null;
         this.selectedTowerForUpgrade = null;
         this.enemyManager.cancelWaveTimer();
         this.updateUI();
+
+        // Menüs schließen
+        this.hideRadialMenu();
+        this.closeUpgradePanel();
     }
 
-    selectTowerType(type) {
+    // Neue Methode zum Anzeigen des Radialmenüs
+    // Diese Methode muss in der ui.js-Datei ersetzt werden
+    // Neue Methode zum Anzeigen des Radialmenüs
+    showRadialMenu(x, y) {
+        // Klick-Position für die spätere Platzierung speichern
+        this.clickX = x;
+        this.clickY = y;
+
+        // Kachelkoordinaten berechnen
+        const tileX = Math.floor(x / this.gameMap.tileSize);
+        const tileY = Math.floor(y / this.gameMap.tileSize);
+        this.selectedTileX = tileX;
+        this.selectedTileY = tileY;
+
+        // Mausposition im Browserfenster berechnen
+        const rect = this.app.view.getBoundingClientRect();
+        const globalX = x + rect.left;
+        const globalY = y + rect.top;
+
+        // Radialmenü genau an die Mausposition setzen (nicht versetzt)
+        this.radialMenu.style.left = `${globalX}px`;
+        this.radialMenu.style.top = `${globalY}px`;
+        this.radialMenu.style.display = 'block';
+
+        // Verfügbare Türme basierend auf Gold aktivieren/deaktivieren
+        this.updateRadialMenuAvailability();
+    }
+
+    // Radialmenü ausblenden
+    hideRadialMenu() {
+        this.radialMenu.style.display = 'none';
+        this.selectedTileX = null;
+        this.selectedTileY = null;
+        this.clickX = null;
+        this.clickY = null;
+    }
+
+    // Verfügbare Türme im Radialmenü aktualisieren
+    updateRadialMenuAvailability() {
+        for (const [type, element] of Object.entries(this.radialTowerOptions)) {
+            if (this.gold < towerTypes[type].cost) {
+                element.classList.add('disabled');
+            } else {
+                element.classList.remove('disabled');
+            }
+        }
+    }
+
+    // Turmauswahl aus dem Radialmenü
+    selectTowerFromRadial(type) {
         // Prüfen, ob genug Gold vorhanden ist
         if (this.gold < towerTypes[type].cost) {
-            return;
+            return; // Nicht genug Gold
         }
 
-        // Turm auswählen oder Auswahl aufheben
-        if (this.selectedTowerType === type) {
-            this.selectedTowerType = null;
-        } else {
-            this.selectedTowerType = type;
-        }
-
-        // Button-UI aktualisieren
-        for (const [towerType, button] of Object.entries(this.towerButtons)) {
-            button.classList.toggle('selected', towerType === this.selectedTowerType);
+        // Turm an der Klickposition platzieren
+        if (this.placeTower(type, this.clickX, this.clickY)) {
+            // Turm wurde erfolgreich platziert
+            this.gold -= towerTypes[type].cost;
+            this.updateUI();
+            this.hideRadialMenu();
         }
     }
 
@@ -148,22 +230,19 @@ class GameUI {
         if (towerResult) {
             // Upgrade-Panel anzeigen
             this.showUpgradePanel(towerResult.tower, towerResult.index, clickX, clickY);
+
+            // Sicherstellen, dass das Radialmenü geschlossen wird
+            this.hideRadialMenu();
             return;
         }
 
-        // Neuen Turm platzieren, falls ein Turmtyp ausgewählt ist
-        if (this.selectedTowerType) {
-            if (this.placeTower(this.selectedTowerType, clickX, clickY)) {
-                // Turm wurde erfolgreich platziert
-                this.gold -= towerTypes[this.selectedTowerType].cost;
-                this.updateUI();
+        // Prüfen, ob die Kachel für einen Turm geeignet ist
+        if (!this.gameMap.isTileOccupied(clickX, clickY)) {
+            // Radialmenü anzeigen
+            this.showRadialMenu(clickX, clickY);
 
-                // Turmtyp nach dem Platzieren abwählen
-                this.selectedTowerType = null;
-                for (const button of Object.values(this.towerButtons)) {
-                    button.classList.remove('selected');
-                }
-            }
+            // Upgrade-Panel schließen, wenn offen
+            this.closeUpgradePanel();
         }
     }
 
@@ -172,7 +251,7 @@ class GameUI {
         const mouseX = event.clientX - rect.left;
         const mouseY = event.clientY - rect.top;
 
-        // Aktuelle Mausposition für Verwendung in drawTowerPreview speichern
+        // Aktuelle Mausposition speichern
         this.mouseX = mouseX;
         this.mouseY = mouseY;
 
@@ -189,20 +268,6 @@ class GameUI {
 
         // Reichweitenkreise aktualisieren
         this.towerManager.updateRangeCircles();
-
-        // Cursor aktualisieren, wenn ein Turmtyp ausgewählt ist
-        if (this.selectedTowerType) {
-            // Prüfen, ob der Turm hier platziert werden kann
-            const canPlace = !this.gameMap.isTileOccupied(mouseX, mouseY) &&
-                !this.towerManager.getTowerAt(mouseX, mouseY);
-
-            // Turmvorschau anzeigen
-            this.towerManager.drawTowerPreview(mouseX, mouseY, this.selectedTowerType, canPlace);
-        } else if (this.towerManager.previewGraphics) {
-            // Vorschau entfernen, wenn kein Turmtyp ausgewählt ist
-            this.towerManager.rangeCirclesContainer.removeChild(this.towerManager.previewGraphics);
-            this.towerManager.previewGraphics = null;
-        }
     }
 
     placeTower(type, x, y) {
@@ -221,6 +286,10 @@ class GameUI {
         // UI aktualisieren
         this.waveElement.textContent = waveNumber;
         this.startWaveButton.disabled = true;
+
+        // Alle offenen Menüs schließen
+        this.hideRadialMenu();
+        this.closeUpgradePanel();
     }
 
     scheduleNextWave() {
@@ -449,20 +518,13 @@ class GameUI {
         this.goldElement.textContent = this.gold;
         this.waveElement.textContent = this.enemyManager.waveNumber;
 
-        // Turm-Buttons aktualisieren
-        for (const [type, button] of Object.entries(this.towerButtons)) {
-            const towerType = towerTypes[type];
-            button.disabled = this.gold < towerType.cost;
-
-            // Das Turm-Label mit aktuellem Preis aktualisieren
-            const labelElement = button.querySelector('.tower-label');
-            if (labelElement) {
-                labelElement.textContent = `${towerType.name} (${towerType.cost})`;
-            }
-        }
-
         // Wellen-Button aktualisieren
         this.startWaveButton.disabled = this.enemyManager.waveInProgress;
+
+        // Falls das Radialmenü offen ist, verfügbare Türme aktualisieren
+        if (this.radialMenu.style.display === 'block') {
+            this.updateRadialMenuAvailability();
+        }
     }
 
     enemyReachedEnd(enemy) {

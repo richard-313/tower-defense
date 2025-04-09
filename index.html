@@ -31,26 +31,7 @@
         </div>
         <!-- PixiJS-Container anstelle von Canvas -->
         <div id="gameContainer" class="game-canvas-container"></div>
-        <div class="controls">
-            <div class="tower-selection">
-                <button id="basicTower" class="tower-button">
-                    <div class="tower-icon basic-tower"></div>
-                    <div class="tower-label">Basis Turm (25)</div>
-                </button>
-                <button id="sniperTower" class="tower-button">
-                    <div class="tower-icon sniper-tower"></div>
-                    <div class="tower-label">Sniper Turm (50)</div>
-                </button>
-                <button id="slowTower" class="tower-button">
-                    <div class="tower-icon slow-tower"></div>
-                    <div class="tower-label">Frost Turm (40)</div>
-                </button>
-                <button id="bombTower" class="tower-button">
-                    <div class="tower-icon bomb-tower"></div>
-                    <div class="tower-label">Bomben Turm (75)</div>
-                </button>
-            </div>
-        </div>
+
         <div id="upgradePanel" class="upgrade-panel">
             <div id="towerInfo" class="tower-info"></div>
             <div class="upgrade-path">
@@ -62,6 +43,26 @@
                 <button id="sellTower" class="upgrade-button sell-button">Turm verkaufen (<span id="sellValue">0</span>
                     Gold)</button>
                 <button id="closeUpgrade" class="upgrade-button close-button">Schließen</button>
+            </div>
+        </div>
+
+        <!-- Radiales Turmauswahl-Menü -->
+        <div id="radialTowerMenu" class="radial-menu">
+            <div id="radialBasicTower" class="tower-option-radial" data-type="basic" data-cost="25">
+                <div class="tower-icon basic-tower"></div>
+            </div>
+            <div id="radialSniperTower" class="tower-option-radial" data-type="sniper" data-cost="50">
+                <div class="tower-icon sniper-tower"></div>
+            </div>
+            <div id="radialSlowTower" class="tower-option-radial" data-type="slow" data-cost="40">
+                <div class="tower-icon slow-tower"></div>
+            </div>
+            <div id="radialBombTower" class="tower-option-radial" data-type="bomb" data-cost="75">
+                <div class="tower-icon bomb-tower"></div>
+            </div>
+            <!-- Füge diesen Code zum radialTowerMenu in index.html hinzu -->
+            <div id="radialCancelButton" class="tower-option-cancel">
+                <div class="cancel-icon">✕</div>
             </div>
         </div>
     </div>
