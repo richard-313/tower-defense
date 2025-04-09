@@ -1,6 +1,7 @@
 // UI Management and User Interactions
 class GameUI {
-    constructor(gameMap, towerManager, enemyManager) {
+    constructor(app, gameMap, towerManager, enemyManager) {
+        this.app = app;
         this.gameMap = gameMap;
         this.towerManager = towerManager;
         this.enemyManager = enemyManager;
@@ -10,21 +11,18 @@ class GameUI {
         this.lives = 10;
         this.selectedTowerForUpgrade = null;
 
-        this.canvas = document.getElementById('gameCanvas');
-        this.ctx = this.canvas.getContext('2d');
-
-        // Mouse position tracking
+        // Mausposition-Tracking
         this.mouseX = null;
         this.mouseY = null;
 
-        // UI Elements
+        // UI-Elemente
         this.livesElement = document.getElementById('lives');
         this.goldElement = document.getElementById('gold');
         this.waveElement = document.getElementById('wave');
         this.startWaveButton = document.getElementById('startWave');
         this.countdownElement = document.getElementById('countdown');
 
-        // Tower buttons
+        // Turm-Buttons
         this.towerButtons = {
             basic: document.getElementById('basicTower'),
             sniper: document.getElementById('sniperTower'),
@@ -32,14 +30,14 @@ class GameUI {
             bomb: document.getElementById('bombTower')
         };
 
-        // Map buttons
+        // Karten-Buttons
         this.mapButtons = {
             map1: document.getElementById('map1'),
             map2: document.getElementById('map2'),
             map3: document.getElementById('map3')
         };
 
-        // Upgrade panel elements
+        // Upgrade-Panel-Elemente
         this.upgradePanel = document.getElementById('upgradePanel');
         this.towerInfo = document.getElementById('towerInfo');
         this.upgradeProgressDiv = document.getElementById('currentLevel');
@@ -55,48 +53,48 @@ class GameUI {
     }
 
     initEventListeners() {
-        // Tower selection buttons
+        // Turm-Auswahlbuttons
         for (const [type, button] of Object.entries(this.towerButtons)) {
             button.addEventListener('click', () => this.selectTowerType(type));
         }
 
-        // Map selection buttons
+        // Kartenauswahlbuttons
         for (const [mapId, button] of Object.entries(this.mapButtons)) {
             button.addEventListener('click', () => this.changeMap(mapId));
         }
 
-        // Canvas events
-        this.canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
-        this.canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
+        // PixiJS-Container-Events
+        this.app.view.addEventListener('click', (e) => this.handleCanvasClick(e));
+        this.app.view.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
 
-        // Wave control
+        // Wellenkontrolle
         this.startWaveButton.addEventListener('click', () => this.startNextWave());
 
-        // Upgrade panel controls
+        // Upgrade-Panel-Steuerung
         this.upgradeDirectlyButton.addEventListener('click', () => this.upgradeTower());
         this.sellTowerButton.addEventListener('click', () => this.sellTower());
         this.closeUpgradeButton.addEventListener('click', () => this.closeUpgradePanel());
     }
 
     changeMap(mapId) {
-        // Change map only if there are no enemies active
+        // Karte nur ändern, wenn keine Feinde aktiv sind
         if (this.enemyManager.enemies.length > 0) {
-            return; // Cannot change map during a wave
+            return; // Kann Karte während einer Welle nicht ändern
         }
 
-        // Update map button selection
+        // Kartenbutton-Auswahl aktualisieren
         for (const button of Object.values(this.mapButtons)) {
             button.classList.remove('selected');
         }
         this.mapButtons[mapId].classList.add('selected');
 
-        // Reset the game state
+        // Spielzustand zurücksetzen
         this.resetGame();
 
-        // Set the new map
+        // Neue Karte setzen
         this.gameMap.setMap(mapId);
 
-        // Update managers with new map
+        // Manager mit neuer Karte aktualisieren
         this.towerManager.updateMap(this.gameMap);
         this.enemyManager.updatePath(this.gameMap.path);
     }
@@ -105,9 +103,16 @@ class GameUI {
         this.gold = 100;
         this.lives = 10;
         this.enemyManager.waveNumber = 0;
+
+        // Feinde und Türme entfernen
         this.enemyManager.enemies = [];
+        this.towerManager.towers.forEach((tower, index) => {
+            this.towerManager.removeTower(index);
+        });
         this.towerManager.towers = [];
         this.towerManager.projectiles = [];
+
+        // UI-Zustand zurücksetzen
         this.selectedTowerType = null;
         this.selectedTowerForUpgrade = null;
         this.enemyManager.cancelWaveTimer();
@@ -115,45 +120,45 @@ class GameUI {
     }
 
     selectTowerType(type) {
-        // Check if enough gold
+        // Prüfen, ob genug Gold vorhanden ist
         if (this.gold < towerTypes[type].cost) {
             return;
         }
 
-        // Select or deselect tower
+        // Turm auswählen oder Auswahl aufheben
         if (this.selectedTowerType === type) {
             this.selectedTowerType = null;
         } else {
             this.selectedTowerType = type;
         }
 
-        // Update button UI
+        // Button-UI aktualisieren
         for (const [towerType, button] of Object.entries(this.towerButtons)) {
             button.classList.toggle('selected', towerType === this.selectedTowerType);
         }
     }
 
     handleCanvasClick(event) {
-        const rect = this.canvas.getBoundingClientRect();
+        const rect = this.app.view.getBoundingClientRect();
         const clickX = event.clientX - rect.left;
         const clickY = event.clientY - rect.top;
 
-        // Check if clicked on an existing tower
+        // Prüfen, ob auf einen bestehenden Turm geklickt wurde
         const towerResult = this.towerManager.getTowerAt(clickX, clickY);
         if (towerResult) {
-            // Show upgrade panel
+            // Upgrade-Panel anzeigen
             this.showUpgradePanel(towerResult.tower, towerResult.index, clickX, clickY);
             return;
         }
 
-        // Place new tower if a tower type is selected
+        // Neuen Turm platzieren, falls ein Turmtyp ausgewählt ist
         if (this.selectedTowerType) {
             if (this.placeTower(this.selectedTowerType, clickX, clickY)) {
-                // Tower placed successfully
+                // Turm wurde erfolgreich platziert
                 this.gold -= towerTypes[this.selectedTowerType].cost;
                 this.updateUI();
 
-                // Deselect tower type after placing
+                // Turmtyp nach dem Platzieren abwählen
                 this.selectedTowerType = null;
                 for (const button of Object.values(this.towerButtons)) {
                     button.classList.remove('selected');
@@ -163,28 +168,40 @@ class GameUI {
     }
 
     handleCanvasMouseMove(event) {
-        const rect = this.canvas.getBoundingClientRect();
+        const rect = this.app.view.getBoundingClientRect();
         const mouseX = event.clientX - rect.left;
         const mouseY = event.clientY - rect.top;
 
-        // Store current mouse position for use in drawTowerPreview
+        // Aktuelle Mausposition für Verwendung in drawTowerPreview speichern
         this.mouseX = mouseX;
         this.mouseY = mouseY;
 
-        // Reset hover state on all towers
+        // Hover-Zustand für alle Türme zurücksetzen
         for (const tower of this.towerManager.towers) {
             tower.hover = false;
         }
 
-        // Check if hovering over a tower
+        // Prüfen, ob über einem Turm
         const towerResult = this.towerManager.getTowerAt(mouseX, mouseY);
         if (towerResult) {
             towerResult.tower.hover = true;
         }
 
-        // Update cursor if a tower type is selected
+        // Reichweitenkreise aktualisieren
+        this.towerManager.updateRangeCircles();
+
+        // Cursor aktualisieren, wenn ein Turmtyp ausgewählt ist
         if (this.selectedTowerType) {
-            // Show tower range preview on hover - handled in rendering
+            // Prüfen, ob der Turm hier platziert werden kann
+            const canPlace = !this.gameMap.isTileOccupied(mouseX, mouseY) &&
+                !this.towerManager.getTowerAt(mouseX, mouseY);
+
+            // Turmvorschau anzeigen
+            this.towerManager.drawTowerPreview(mouseX, mouseY, this.selectedTowerType, canPlace);
+        } else if (this.towerManager.previewGraphics) {
+            // Vorschau entfernen, wenn kein Turmtyp ausgewählt ist
+            this.towerManager.rangeCirclesContainer.removeChild(this.towerManager.previewGraphics);
+            this.towerManager.previewGraphics = null;
         }
     }
 
@@ -193,38 +210,38 @@ class GameUI {
     }
 
     startNextWave() {
-        // Start next wave
+        // Nächste Welle starten
         const waveNumber = this.enemyManager.startNextWave(() => {
-            // This callback will be called when the wave is complete
+            // Dieser Callback wird aufgerufen, wenn die Welle abgeschlossen ist
 
-            // Schedule next wave after delay
+            // Nächste Welle nach Verzögerung planen
             this.scheduleNextWave();
         });
 
-        // Update UI
+        // UI aktualisieren
         this.waveElement.textContent = waveNumber;
         this.startWaveButton.disabled = true;
     }
 
     scheduleNextWave() {
-        // Add bonus gold for completing wave
+        // Bonus-Gold für das Abschließen der Welle hinzufügen
         const waveBonus = 20 + this.enemyManager.waveNumber * 5;
         this.gold += waveBonus;
         this.updateUI();
 
-        // Schedule next wave after delay (3 seconds)
-        const autoStartTime = 3000; // 3 seconds
+        // Nächste Welle nach Verzögerung planen (3 Sekunden)
+        const autoStartTime = 3000; // 3 Sekunden
         this.enemyManager.scheduleNextWave(autoStartTime, () => {
-            // Wave started automatically
+            // Welle wurde automatisch gestartet
             this.waveElement.textContent = this.enemyManager.waveNumber;
-            // Make sure the UI is updated
+            // Sicherstellen, dass die UI aktualisiert wird
             this.startWaveButton.disabled = true;
         });
 
-        // Update countdown display
+        // Countdown-Anzeige aktualisieren
         this.updateCountdown();
 
-        // Enable start button
+        // Start-Button aktivieren
         this.startWaveButton.disabled = false;
     }
 
@@ -236,32 +253,35 @@ class GameUI {
             return;
         }
 
-        // Format seconds
+        // Sekunden formatieren
         const seconds = Math.ceil(remainingTime / 1000);
         this.countdownElement.textContent = `${seconds}s`;
 
-        // Continue updating every 500ms until countdown is done
+        // Fortfahren mit der Aktualisierung alle 500ms, bis der Countdown abgeschlossen ist
         setTimeout(() => this.updateCountdown(), 500);
     }
 
     showUpgradePanel(tower, towerIndex, x, y) {
-        // Set current tower for upgrade
+        // Aktuellen Turm für Upgrade setzen
         this.selectedTowerForUpgrade = { tower, index: towerIndex };
 
-        // Position panel near tower
+        // Panel in der Nähe des Turms positionieren
         this.upgradePanel.style.left = (x + 20) + 'px';
         this.upgradePanel.style.top = (y - 100) + 'px';
         this.upgradePanel.style.display = 'block';
 
-        // Remove selection from all towers
+        // Auswahl für alle Türme aufheben
         for (const t of this.towerManager.towers) {
             t.selected = false;
         }
 
-        // Mark this tower as selected
+        // Diesen Turm als ausgewählt markieren
         tower.selected = true;
 
-        // Update tower info
+        // Reichweitenkreise aktualisieren
+        this.towerManager.updateRangeCircles();
+
+        // Turm-Info aktualisieren
         this.updateTowerInfo();
     }
 
@@ -271,7 +291,7 @@ class GameUI {
         const { tower } = this.selectedTowerForUpgrade;
         const towerType = towerTypes[tower.type];
 
-        // Basic tower information
+        // Grundlegende Turm-Informationen
         let infoText = `<b>${towerType.name}</b><br>`;
         infoText += `<i>${towerType.description}</i><br><br>`;
         infoText += `Level: ${tower.level}/3<br>`;
@@ -279,7 +299,7 @@ class GameUI {
         infoText += `Reichweite: ${tower.range}<br>`;
         infoText += `Feuerrate: ${(1000 / tower.fireRate).toFixed(1)}/s<br>`;
 
-        // Special properties
+        // Spezielle Eigenschaften
         if (tower.multishot) {
             infoText += `Mehrfachschuss: ${tower.multishot}x<br>`;
         }
@@ -296,14 +316,14 @@ class GameUI {
 
         this.towerInfo.innerHTML = infoText;
 
-        // Create upgrade path visualization
+        // Upgrade-Pfad-Visualisierung erstellen
         this.createUpgradePathUI();
 
-        // Set target level for upgrade
+        // Ziellevel für Upgrade setzen
         const targetLevel = Math.min(tower.level + 1, 3);
         this.targetLevelSpan.textContent = targetLevel;
 
-        // Calculate and display upgrade cost
+        // Upgrade-Kosten berechnen und anzeigen
         let upgradeCost = 0;
 
         if (targetLevel <= towerType.upgrades.length && targetLevel > tower.level) {
@@ -315,7 +335,7 @@ class GameUI {
 
         this.upgradeCostSpan.textContent = upgradeCost;
 
-        // Set sell value
+        // Verkaufswert setzen
         this.sellValueSpan.textContent = tower.sellValue;
     }
 
@@ -325,16 +345,16 @@ class GameUI {
         const { tower } = this.selectedTowerForUpgrade;
         const towerType = towerTypes[tower.type];
 
-        // Clear previous path
+        // Vorherigen Pfad löschen
         this.upgradeProgressDiv.innerHTML = '';
 
-        // Create upgrade path
+        // Upgrade-Pfad erstellen
         const path = document.createElement('div');
         path.classList.add('upgrade-path');
 
-        // Add level markers
+        // Level-Marker hinzufügen
         for (let i = 0; i <= 3; i++) {
-            // Level marker
+            // Level-Marker
             const marker = document.createElement('div');
             marker.classList.add('level-marker');
             marker.textContent = i;
@@ -349,7 +369,7 @@ class GameUI {
 
             path.appendChild(marker);
 
-            // Add connecting path (except after last marker)
+            // Verbindungspfad hinzufügen (außer nach dem letzten Marker)
             if (i < 3) {
                 const connector = document.createElement('div');
                 connector.classList.add('level-path');
@@ -364,7 +384,7 @@ class GameUI {
 
         this.upgradeProgressDiv.appendChild(path);
 
-        // Update upgrade button based on next available upgrade
+        // Upgrade-Button basierend auf dem nächsten verfügbaren Upgrade aktualisieren
         if (tower.level < towerType.upgrades.length) {
             const nextUpgrade = towerType.upgrades[tower.level];
             this.upgradeDirectlyButton.textContent = `${nextUpgrade.name} (${nextUpgrade.cost} Gold)`;
@@ -383,15 +403,15 @@ class GameUI {
         const { tower, index } = this.selectedTowerForUpgrade;
         const targetLevel = Math.min(tower.level + 1, 3);
 
-        // Perform upgrade
+        // Upgrade durchführen
         const result = this.towerManager.upgradeTower(index, targetLevel);
 
         if (result.success) {
-            // Deduct gold
+            // Gold abziehen
             this.gold -= result.cost;
             this.updateUI();
 
-            // Update upgrade panel
+            // Upgrade-Panel aktualisieren
             this.updateTowerInfo();
         }
     }
@@ -401,11 +421,11 @@ class GameUI {
 
         const { index } = this.selectedTowerForUpgrade;
 
-        // Sell tower and get gold back
+        // Turm verkaufen und Gold zurückbekommen
         const goldRefund = this.towerManager.removeTower(index);
         this.gold += goldRefund;
 
-        // Close panel and update UI
+        // Panel schließen und UI aktualisieren
         this.closeUpgradePanel();
         this.updateUI();
     }
@@ -413,32 +433,35 @@ class GameUI {
     closeUpgradePanel() {
         this.upgradePanel.style.display = 'none';
 
-        // Deselect tower
+        // Turm abwählen
         if (this.selectedTowerForUpgrade) {
             this.selectedTowerForUpgrade.tower.selected = false;
             this.selectedTowerForUpgrade = null;
+
+            // Reichweitenkreise aktualisieren
+            this.towerManager.updateRangeCircles();
         }
     }
 
     updateUI() {
-        // Update game info
+        // Spielinfo aktualisieren
         this.livesElement.textContent = this.lives;
         this.goldElement.textContent = this.gold;
         this.waveElement.textContent = this.enemyManager.waveNumber;
 
-        // Update tower buttons
+        // Turm-Buttons aktualisieren
         for (const [type, button] of Object.entries(this.towerButtons)) {
             const towerType = towerTypes[type];
             button.disabled = this.gold < towerType.cost;
 
-            // Update the tower label with current cost
+            // Das Turm-Label mit aktuellem Preis aktualisieren
             const labelElement = button.querySelector('.tower-label');
             if (labelElement) {
                 labelElement.textContent = `${towerType.name} (${towerType.cost})`;
             }
         }
 
-        // Update wave button
+        // Wellen-Button aktualisieren
         this.startWaveButton.disabled = this.enemyManager.waveInProgress;
     }
 
@@ -446,7 +469,7 @@ class GameUI {
         this.lives--;
         this.updateUI();
 
-        // Check game over
+        // Spielende prüfen
         if (this.lives <= 0) {
             this.gameOver();
         }
@@ -460,38 +483,5 @@ class GameUI {
     gameOver() {
         alert(`Game Over! Du hast Welle ${this.enemyManager.waveNumber} erreicht.`);
         this.resetGame();
-    }
-
-    // Updated drawTowerPreview method in the GameUI class
-    // Add this method to your ui.js file
-
-    drawTowerPreview(ctx) {
-        if (!this.selectedTowerType) return;
-
-        // Get the current mouse position
-        // We need to track mouse position in the class
-        if (!this.mouseX || !this.mouseY) return;
-
-        // Get tile center
-        const tileCenter = this.gameMap.getTileCenter(this.mouseX, this.mouseY);
-
-        // Check if tower can be placed here
-        const canPlace = !this.gameMap.isTileOccupied(this.mouseX, this.mouseY);
-
-        // Draw tower preview
-        const towerType = towerTypes[this.selectedTowerType];
-
-        // Draw range circle
-        ctx.strokeStyle = canPlace ? 'rgba(0, 255, 0, 0.3)' : 'rgba(255, 0, 0, 0.3)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(tileCenter.x, tileCenter.y, towerType.range, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Draw tower placeholder
-        ctx.fillStyle = canPlace ? 'rgba(0, 255, 0, 0.5)' : 'rgba(255, 0, 0, 0.5)';
-        ctx.beginPath();
-        ctx.arc(tileCenter.x, tileCenter.y, 15, 0, Math.PI * 2);
-        ctx.fill();
     }
 }

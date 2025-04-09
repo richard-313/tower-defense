@@ -6,6 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Medieval Tower Defense</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- PixiJS einbinden -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
 </head>
 
 <body>
@@ -27,7 +29,8 @@
                 <button id="startWave" class="start-button">Welle starten</button>
             </div>
         </div>
-        <canvas id="gameCanvas" width="800" height="500"></canvas>
+        <!-- PixiJS-Container anstelle von Canvas -->
+        <div id="gameContainer" class="game-canvas-container"></div>
         <div class="controls">
             <div class="tower-selection">
                 <button id="basicTower" class="tower-button">

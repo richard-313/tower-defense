@@ -5,7 +5,7 @@ const enemyTypes = {
         health: 50,
         speed: 1,
         reward: 10,
-        color: '#7f8c8d',
+        color: 0x7f8c8d,
         size: 15
     },
     fast: {
@@ -13,7 +13,7 @@ const enemyTypes = {
         health: 30,
         speed: 2,
         reward: 15,
-        color: '#9b59b6',
+        color: 0x9b59b6,
         size: 12
     },
     tank: {
@@ -21,7 +21,7 @@ const enemyTypes = {
         health: 150,
         speed: 0.5,
         reward: 20,
-        color: '#2c3e50',
+        color: 0x2c3e50,
         size: 18
     },
     boss: {
@@ -29,13 +29,20 @@ const enemyTypes = {
         health: 300,
         speed: 0.7,
         reward: 50,
-        color: '#c0392b',
+        color: 0xc0392b,
         size: 25
     }
 };
 
 class EnemyManager {
-    constructor(path) {
+    constructor(app, path) {
+        this.app = app;
+        this.container = new PIXI.Container();
+        this.effectsContainer = new PIXI.Container(); // Für Effekte und Partikel
+
+        this.app.stage.addChild(this.container);
+        this.app.stage.addChild(this.effectsContainer);
+
         this.enemies = [];
         this.path = path;
         this.waveNumber = 0;
@@ -44,7 +51,10 @@ class EnemyManager {
         this.spawnInterval = null;
         this.autoStartTimer = null;
         this.countdownTime = 0;
-        this.onWaveComplete = null; // Add this line to store the callback
+        this.onWaveComplete = null; // Callback, wenn die Welle fertig ist
+
+        // Sprites für verschiedene Feindtypen
+        this.enemySprites = {};
     }
 
     updatePath(newPath) {
@@ -56,20 +66,20 @@ class EnemyManager {
 
         this.waveNumber++;
         this.waveInProgress = true;
-        this.onWaveComplete = callback; // Store the callback for later use
+        this.onWaveComplete = callback; // Callback speichern
 
-        // Generate wave based on current progress
+        // Welle basierend auf dem aktuellen Fortschritt generieren
         this.spawnWave();
 
         return this.waveNumber;
     }
 
     spawnWave() {
-        const enemiesCount = Math.min(5 + this.waveNumber * 2, 30); // Max 30 enemies per wave
+        const enemiesCount = Math.min(5 + this.waveNumber * 2, 30); // Maximal 30 Feinde pro Welle
         this.enemiesRemaining = enemiesCount;
         let enemiesSpawned = 0;
 
-        // Different enemy types depending on wave
+        // Verschiedene Feindtypen je nach Welle
         const availableTypes = [];
         availableTypes.push('normal');
 
@@ -77,7 +87,7 @@ class EnemyManager {
         if (this.waveNumber >= 5) availableTypes.push('tank');
         if (this.waveNumber >= 8 && this.waveNumber % 5 === 0) availableTypes.push('boss');
 
-        // Spawn timer for enemies
+        // Spawn-Timer für Feinde
         clearInterval(this.spawnInterval);
         this.spawnInterval = setInterval(() => {
             if (enemiesSpawned >= enemiesCount) {
@@ -85,39 +95,79 @@ class EnemyManager {
                 return;
             }
 
-            // Choose random enemy type
+            // Zufälligen Feindtyp auswählen
             const randomTypeIndex = Math.floor(Math.random() * availableTypes.length);
             const enemyType = availableTypes[randomTypeIndex];
             const enemyData = enemyTypes[enemyType];
 
-            // Scale health with wave number
+            // Gesundheit mit Wellennummer skalieren
             let health = enemyData.health;
             if (this.waveNumber > 1) {
                 health += Math.round(health * (this.waveNumber - 1) * 0.2);
             }
 
-            // Create new enemy
-            const newEnemy = {
-                x: this.path[0].x,
-                y: this.path[0].y,
-                type: enemyType,
-                typeName: enemyData.name,
-                health: health,
-                maxHealth: health,
-                speed: enemyData.speed,
-                baseSpeed: enemyData.speed, // Store original speed for slow effects
-                size: enemyData.size,
-                color: enemyData.color,
-                reward: enemyData.reward,
-                pathIndex: 0,
-                slowed: false,
-                slowUntil: 0,
-                effects: [] // For visual effects like slow, poison, etc.
-            };
-
-            this.enemies.push(newEnemy);
+            // Neuen Feind erstellen
+            this.createEnemy(enemyType, enemyData, health);
             enemiesSpawned++;
-        }, 800); // Spawn enemy every 800ms
+        }, 800); // Feind alle 800ms spawnen
+    }
+
+    createEnemy(type, enemyData, health) {
+        // PIXI Container erstellen
+        const enemyContainer = new PIXI.Container();
+        enemyContainer.x = this.path[0].x;
+        enemyContainer.y = this.path[0].y;
+
+        // Grafiken für den Feind erstellen
+        const enemyGraphics = new PIXI.Graphics();
+
+        // Gesundheitsbalken-Hintergrund
+        const healthBarBackground = new PIXI.Graphics();
+        healthBarBackground.beginFill(0xFF0000);
+        healthBarBackground.drawRect(-enemyData.size, -enemyData.size - 10, enemyData.size * 2, 5);
+        healthBarBackground.endFill();
+
+        // Gesundheitsbalken-Vordergrund
+        const healthBar = new PIXI.Graphics();
+        healthBar.beginFill(0x00FF00);
+        healthBar.drawRect(-enemyData.size, -enemyData.size - 10, enemyData.size * 2, 5);
+        healthBar.endFill();
+
+        // Zum Container hinzufügen
+        enemyContainer.addChild(enemyGraphics);
+        enemyContainer.addChild(healthBarBackground);
+        enemyContainer.addChild(healthBar);
+
+        // Feind-Daten
+        const enemy = {
+            sprite: enemyContainer,
+            graphics: enemyGraphics,
+            healthBar: healthBar,
+            x: this.path[0].x,
+            y: this.path[0].y,
+            type: type,
+            typeName: enemyData.name,
+            health: health,
+            maxHealth: health,
+            speed: enemyData.speed,
+            baseSpeed: enemyData.speed, // Ursprüngliche Geschwindigkeit für Slow-Effekte speichern
+            size: enemyData.size,
+            color: enemyData.color,
+            reward: enemyData.reward,
+            pathIndex: 0,
+            slowed: false,
+            slowUntil: 0,
+            effects: [] // Für visuelle Effekte wie Slow, Gift, etc.
+        };
+
+        // Zeichne den Feind basierend auf seinem Typ
+        this.drawEnemyByType(enemy);
+
+        // Zum Container hinzufügen
+        this.container.addChild(enemyContainer);
+        this.enemies.push(enemy);
+
+        return enemy;
     }
 
     scheduleNextWave(waitTime, callback) {
@@ -146,305 +196,328 @@ class EnemyManager {
     }
 
     update(onEnemyEscape, onEnemyDeath) {
+        const deltaTime = this.app.ticker.deltaMS; // Zeit seit dem letzten Frame
+        const timeScale = deltaTime / (1000 / 60); // Anpassung für 60 FPS
+
         for (let i = this.enemies.length - 1; i >= 0; i--) {
             const enemy = this.enemies[i];
 
-            // Check if slow effect has expired
+            // Prüfen, ob Slow-Effekt abgelaufen ist
             if (enemy.slowed && Date.now() > enemy.slowUntil) {
                 enemy.slowed = false;
-                enemy.speed = enemy.baseSpeed; // Restore original speed
+                enemy.speed = enemy.baseSpeed; // Ursprüngliche Geschwindigkeit wiederherstellen
             }
 
-            // Calculate target direction on path
+            // Zielrichtung auf dem Pfad berechnen
             const targetPoint = this.path[enemy.pathIndex];
             const dx = targetPoint.x - enemy.x;
             const dy = targetPoint.y - enemy.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
-            // If close enough to waypoint, move to next waypoint
-            if (distance < enemy.speed * 2) {
+            // Wenn nahe genug am Wegpunkt, zum nächsten Wegpunkt übergehen
+            if (distance < enemy.speed * 2 * timeScale) {
                 enemy.pathIndex++;
 
-                // If end of path reached
+                // Wenn das Ende des Pfades erreicht ist
                 if (enemy.pathIndex >= this.path.length) {
-                    // Enemy escapes, player loses lives
+                    // Feind entkommt, Spieler verliert Leben
                     onEnemyEscape(enemy);
 
-                    // Remove enemy
-                    this.enemies.splice(i, 1);
+                    // Feind entfernen
+                    this.removeEnemy(i);
                     this.enemiesRemaining--;
                     continue;
                 }
             }
 
-            // Move enemy to current waypoint
+            // Feind zum aktuellen Wegpunkt bewegen
             const newTargetPoint = this.path[enemy.pathIndex];
             const newDx = newTargetPoint.x - enemy.x;
             const newDy = newTargetPoint.y - enemy.y;
             const newDistance = Math.sqrt(newDx * newDx + newDy * newDy);
 
-            // Normalized direction
+            // Normalisierte Richtung
             if (newDistance > 0) {
                 const dirX = newDx / newDistance;
                 const dirY = newDy / newDistance;
 
-                // Move enemy
-                enemy.x += dirX * enemy.speed;
-                enemy.y += dirY * enemy.speed;
+                // Feind bewegen
+                enemy.x += dirX * enemy.speed * timeScale;
+                enemy.y += dirY * enemy.speed * timeScale;
+
+                // Sprite-Position aktualisieren
+                enemy.sprite.x = enemy.x;
+                enemy.sprite.y = enemy.y;
+
+                // Gesundheitsbalken aktualisieren
+                const healthPercentage = enemy.health / enemy.maxHealth;
+                enemy.healthBar.clear();
+                enemy.healthBar.beginFill(0x00FF00);
+                enemy.healthBar.drawRect(-enemy.size, -enemy.size - 10, enemy.size * 2 * healthPercentage, 5);
+                enemy.healthBar.endFill();
             }
 
-            // Remove enemy if it's dead
+            // Feind entfernen, wenn er tot ist
             if (enemy.health <= 0) {
-                // Give gold for killing the enemy
+                // Gold für das Töten des Feindes geben
                 onEnemyDeath(enemy);
 
-                this.enemies.splice(i, 1);
+                // Feind entfernen
+                this.removeEnemy(i);
                 this.enemiesRemaining--;
             }
         }
 
-        // Check if wave is complete
+        // Effekte aktualisieren
+        this.updateEffects();
+
+        // Prüfen, ob die Welle abgeschlossen ist
         if (this.waveInProgress && this.enemies.length === 0 && this.enemiesRemaining <= 0) {
             this.waveInProgress = false;
-            return true; // Wave complete
+            return true; // Welle abgeschlossen
         }
 
-        return false; // Wave still in progress
+        return false; // Welle noch im Gange
+    }
+
+    removeEnemy(index) {
+        if (index >= 0 && index < this.enemies.length) {
+            // Sprite von der Stage entfernen
+            const enemy = this.enemies[index];
+            this.container.removeChild(enemy.sprite);
+
+            // Aus dem Array entfernen
+            this.enemies.splice(index, 1);
+        }
     }
 
     applyEffect(enemy, effect, duration, value) {
         switch (effect) {
             case 'slow':
                 enemy.slowed = true;
-                enemy.baseSpeed = enemy.baseSpeed || enemy.speed; // Store original speed if not stored
-                enemy.speed = enemy.baseSpeed * value; // Slow by factor
+                enemy.baseSpeed = enemy.baseSpeed || enemy.speed; // Ursprüngliche Geschwindigkeit speichern
+                enemy.speed = enemy.baseSpeed * value; // Um Faktor verlangsamen
                 enemy.slowUntil = Date.now() + duration;
 
-                // Add visual effect
+                // Visuellen Effekt hinzufügen
+                this.addSlowEffect(enemy);
+
+                // Zum Effekte-Array hinzufügen
                 enemy.effects.push({
                     type: 'slow',
                     until: enemy.slowUntil
                 });
                 break;
 
-            // Add more effects here as needed
+            // Weitere Effekte hier hinzufügen nach Bedarf
         }
     }
 
-    draw(ctx) {
-        this.enemies.forEach(enemy => {
-            // Health bar
-            const healthPercentage = enemy.health / enemy.maxHealth;
-            ctx.fillStyle = 'red';
-            ctx.fillRect(
-                enemy.x - enemy.size,
-                enemy.y - enemy.size - 10,
-                enemy.size * 2,
-                5
-            );
-            ctx.fillStyle = 'green';
-            ctx.fillRect(
-                enemy.x - enemy.size,
-                enemy.y - enemy.size - 10,
-                enemy.size * 2 * healthPercentage,
-                5
-            );
+    addSlowEffect(enemy) {
+        // Langsam-Effekt (blauer Ring)
+        const slowEffect = new PIXI.Graphics();
+        slowEffect.lineStyle(2, 0x1abc9c);
+        slowEffect.drawCircle(0, 0, enemy.size + 3);
 
-            // Draw different enemy types
-            this.drawEnemyByType(ctx, enemy);
+        // Schnee-Partikel
+        const particles = [];
+        for (let i = 0; i < 3; i++) {
+            const particle = new PIXI.Graphics();
+            particle.beginFill(0xFFFFFF, 0.7);
+            particle.drawCircle(0, 0, 1.5);
+            particle.endFill();
+            particles.push(particle);
+            slowEffect.addChild(particle);
+        }
 
-            // Show slow effect
-            if (enemy.slowed) {
-                ctx.strokeStyle = '#1abc9c';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(enemy.x, enemy.y, enemy.size + 3, 0, Math.PI * 2);
-                ctx.stroke();
+        // Effekt zur Position des Feindes verschieben
+        slowEffect.x = enemy.x;
+        slowEffect.y = enemy.y;
 
-                // Snow particles
-                const time = Date.now() / 300;
-                for (let i = 0; i < 3; i++) {
-                    const angle = time + i * Math.PI * 2 / 3;
-                    const dist = 5 + Math.sin(time * 2) * 2;
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-                    ctx.beginPath();
-                    ctx.arc(
-                        enemy.x + Math.cos(angle) * dist,
-                        enemy.y + Math.sin(angle) * dist,
-                        1.5,
-                        0, Math.PI * 2
-                    );
-                    ctx.fill();
-                }
+        // Zum Effekt-Container hinzufügen
+        this.effectsContainer.addChild(slowEffect);
+
+        // Animation hinzufügen
+        const animate = () => {
+            // Effekt mit dem Feind bewegen
+            slowEffect.x = enemy.x;
+            slowEffect.y = enemy.y;
+
+            // Partikelanimation
+            const time = Date.now() / 300;
+            for (let i = 0; i < particles.length; i++) {
+                const angle = time + i * Math.PI * 2 / 3;
+                const dist = 5 + Math.sin(time * 2) * 2;
+                particles[i].x = Math.cos(angle) * dist;
+                particles[i].y = Math.sin(angle) * dist;
             }
-        });
+
+            // Effekt beenden, wenn der Slow-Effekt abgelaufen ist oder der Feind tot ist
+            if (!enemy.slowed || enemy.health <= 0) {
+                this.effectsContainer.removeChild(slowEffect);
+                this.app.ticker.remove(animate);
+            }
+        };
+
+        this.app.ticker.add(animate);
     }
 
-    drawEnemyByType(ctx, enemy) {
+    updateEffects() {
+        // Hier könnten später weitere Effektaktualisierungen hinzugefügt werden
+    }
+
+    drawEnemyByType(enemy) {
+        // Grafik zurücksetzen
+        enemy.graphics.clear();
+
         switch (enemy.type) {
-            case 'normal': // Basic peasant
-                this.drawNormalEnemy(ctx, enemy);
+            case 'normal': // Bauer
+                this.drawNormalEnemy(enemy);
                 break;
 
-            case 'fast': // Scout
-                this.drawFastEnemy(ctx, enemy);
+            case 'fast': // Späher
+                this.drawFastEnemy(enemy);
                 break;
 
-            case 'tank': // Knight
-                this.drawTankEnemy(ctx, enemy);
+            case 'tank': // Ritter
+                this.drawTankEnemy(enemy);
                 break;
 
-            case 'boss': // Warlord
-                this.drawBossEnemy(ctx, enemy);
+            case 'boss': // Kriegsherr
+                this.drawBossEnemy(enemy);
                 break;
 
             default:
-                // Fallback to simple circle
-                ctx.fillStyle = enemy.color;
-                ctx.beginPath();
-                ctx.arc(enemy.x, enemy.y, enemy.size, 0, Math.PI * 2);
-                ctx.fill();
+                // Fallback zu einfachem Kreis
+                enemy.graphics.beginFill(enemy.color);
+                enemy.graphics.drawCircle(0, 0, enemy.size);
+                enemy.graphics.endFill();
         }
     }
 
-    drawNormalEnemy(ctx, enemy) {
-        // Body
-        ctx.fillStyle = '#7f8c8d';
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y, enemy.size, 0, Math.PI * 2);
-        ctx.fill();
+    drawNormalEnemy(enemy) {
+        // Körper
+        enemy.graphics.beginFill(0x7f8c8d);
+        enemy.graphics.drawCircle(0, 0, enemy.size);
+        enemy.graphics.endFill();
 
-        // Face
-        ctx.fillStyle = '#f5d7b5'; // Skin tone
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y - 2, enemy.size * 0.6, 0, Math.PI * 2);
-        ctx.fill();
+        // Gesicht
+        enemy.graphics.beginFill(0xf5d7b5); // Hautfarbe
+        enemy.graphics.drawCircle(0, -2, enemy.size * 0.6);
+        enemy.graphics.endFill();
 
-        // Hat
-        ctx.fillStyle = '#964B00';
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y - enemy.size * 0.5, enemy.size * 0.7, Math.PI, Math.PI * 2);
-        ctx.fill();
+        // Hut
+        enemy.graphics.beginFill(0x964B00);
+        enemy.graphics.arc(0, -enemy.size * 0.5, enemy.size * 0.7, Math.PI, Math.PI * 2);
+        enemy.graphics.endFill();
     }
 
-    drawFastEnemy(ctx, enemy) {
+    drawFastEnemy(enemy) {
+        // Bewegungsrichtung berechnen
         const moveAngle = Math.atan2(
             this.path[enemy.pathIndex].y - enemy.y,
             this.path[enemy.pathIndex].x - enemy.x
         );
 
-        // Movement trail
-        ctx.fillStyle = 'rgba(155, 89, 182, 0.3)';
+        // Bewegungsspur
+        enemy.graphics.beginFill(0x9b59b6, 0.3);
         for (let i = 1; i <= 3; i++) {
-            ctx.beginPath();
-            ctx.arc(
-                enemy.x - Math.cos(moveAngle) * (i * 5),
-                enemy.y - Math.sin(moveAngle) * (i * 5),
-                enemy.size - i * 2,
-                0, Math.PI * 2
+            enemy.graphics.drawCircle(
+                -Math.cos(moveAngle) * (i * 5),
+                -Math.sin(moveAngle) * (i * 5),
+                enemy.size - i * 2
             );
-            ctx.fill();
         }
+        enemy.graphics.endFill();
 
-        // Body
-        ctx.fillStyle = '#9b59b6';
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y, enemy.size, 0, Math.PI * 2);
-        ctx.fill();
+        // Körper
+        enemy.graphics.beginFill(0x9b59b6);
+        enemy.graphics.drawCircle(0, 0, enemy.size);
+        enemy.graphics.endFill();
 
-        // Cape
-        ctx.fillStyle = '#8e44ad';
-        ctx.beginPath();
-        ctx.moveTo(enemy.x, enemy.y);
-        ctx.lineTo(
-            enemy.x - Math.cos(moveAngle) * enemy.size * 1.5,
-            enemy.y - Math.sin(moveAngle) * enemy.size * 1.5
+        // Umhang
+        enemy.graphics.beginFill(0x8e44ad);
+        enemy.graphics.moveTo(0, 0);
+        enemy.graphics.lineTo(
+            -Math.cos(moveAngle) * enemy.size * 1.5,
+            -Math.sin(moveAngle) * enemy.size * 1.5
         );
-        ctx.lineTo(
-            enemy.x - Math.cos(moveAngle) * enemy.size * 1.2 + Math.sin(moveAngle) * enemy.size * 0.8,
-            enemy.y - Math.sin(moveAngle) * enemy.size * 1.2 - Math.cos(moveAngle) * enemy.size * 0.8
+        enemy.graphics.lineTo(
+            -Math.cos(moveAngle) * enemy.size * 1.2 + Math.sin(moveAngle) * enemy.size * 0.8,
+            -Math.sin(moveAngle) * enemy.size * 1.2 - Math.cos(moveAngle) * enemy.size * 0.8
         );
-        ctx.lineTo(
-            enemy.x - Math.cos(moveAngle) * enemy.size * 1.2 - Math.sin(moveAngle) * enemy.size * 0.8,
-            enemy.y - Math.sin(moveAngle) * enemy.size * 1.2 + Math.cos(moveAngle) * enemy.size * 0.8
+        enemy.graphics.lineTo(
+            -Math.cos(moveAngle) * enemy.size * 1.2 - Math.sin(moveAngle) * enemy.size * 0.8,
+            -Math.sin(moveAngle) * enemy.size * 1.2 + Math.cos(moveAngle) * enemy.size * 0.8
         );
-        ctx.closePath();
-        ctx.fill();
+        enemy.graphics.closePath();
+        enemy.graphics.endFill();
     }
 
-    drawTankEnemy(ctx, enemy) {
-        // Shield
-        ctx.fillStyle = '#34495e';
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y, enemy.size, 0, Math.PI * 2);
-        ctx.fill();
+    drawTankEnemy(enemy) {
+        // Schild
+        enemy.graphics.beginFill(0x34495e);
+        enemy.graphics.drawCircle(0, 0, enemy.size);
+        enemy.graphics.endFill();
 
-        // Shield details
-        ctx.strokeStyle = '#2c3e50';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y, enemy.size - 3, 0, Math.PI * 2);
-        ctx.stroke();
+        // Schilddetails
+        enemy.graphics.lineStyle(3, 0x2c3e50);
+        enemy.graphics.drawCircle(0, 0, enemy.size - 3);
 
-        // Helmet
-        ctx.fillStyle = '#7f8c8d';
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y - 2, enemy.size * 0.6, 0, Math.PI * 2);
-        ctx.fill();
+        // Helm
+        enemy.graphics.beginFill(0x7f8c8d);
+        enemy.graphics.drawCircle(0, -2, enemy.size * 0.6);
+        enemy.graphics.endFill();
 
-        // Face slit in helmet
-        ctx.fillStyle = 'black';
-        ctx.fillRect(enemy.x - enemy.size * 0.4, enemy.y - 5, enemy.size * 0.8, 3);
+        // Gesichtsspalt im Helm
+        enemy.graphics.beginFill(0x000000);
+        enemy.graphics.drawRect(-enemy.size * 0.4, -5, enemy.size * 0.8, 3);
+        enemy.graphics.endFill();
     }
 
-    drawBossEnemy(ctx, enemy) {
+    drawBossEnemy(enemy) {
         const time = Date.now() / 300;
 
         // Aura
-        ctx.fillStyle = 'rgba(192, 57, 43, 0.2)';
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y, enemy.size * 1.5 + Math.sin(time) * 3, 0, Math.PI * 2);
-        ctx.fill();
+        enemy.graphics.beginFill(0xc0392b, 0.2);
+        enemy.graphics.drawCircle(0, 0, enemy.size * 1.5 + Math.sin(time) * 3);
+        enemy.graphics.endFill();
 
-        // Body
-        ctx.fillStyle = '#c0392b';
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y, enemy.size, 0, Math.PI * 2);
-        ctx.fill();
+        // Körper
+        enemy.graphics.beginFill(0xc0392b);
+        enemy.graphics.drawCircle(0, 0, enemy.size);
+        enemy.graphics.endFill();
 
-        // Crown
-        ctx.fillStyle = 'gold';
+        // Krone
+        enemy.graphics.beginFill(0xFFD700);
         const crownHeight = enemy.size * 0.6;
-        ctx.beginPath();
-        ctx.moveTo(enemy.x - enemy.size * 0.6, enemy.y - enemy.size * 0.5);
-        ctx.lineTo(enemy.x - enemy.size * 0.6, enemy.y - enemy.size * 0.5 - crownHeight * 0.6);
-        ctx.lineTo(enemy.x - enemy.size * 0.4, enemy.y - enemy.size * 0.5 - crownHeight * 0.3);
-        ctx.lineTo(enemy.x - enemy.size * 0.2, enemy.y - enemy.size * 0.5 - crownHeight * 0.8);
-        ctx.lineTo(enemy.x, enemy.y - enemy.size * 0.5 - crownHeight * 0.4);
-        ctx.lineTo(enemy.x + enemy.size * 0.2, enemy.y - enemy.size * 0.5 - crownHeight * 0.8);
-        ctx.lineTo(enemy.x + enemy.size * 0.4, enemy.y - enemy.size * 0.5 - crownHeight * 0.3);
-        ctx.lineTo(enemy.x + enemy.size * 0.6, enemy.y - enemy.size * 0.5 - crownHeight * 0.6);
-        ctx.lineTo(enemy.x + enemy.size * 0.6, enemy.y - enemy.size * 0.5);
-        ctx.closePath();
-        ctx.fill();
 
-        // Face
-        ctx.fillStyle = '#7d241e';
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y, enemy.size * 0.6, 0, Math.PI * 2);
-        ctx.fill();
+        enemy.graphics.moveTo(-enemy.size * 0.6, -enemy.size * 0.5);
+        enemy.graphics.lineTo(-enemy.size * 0.6, -enemy.size * 0.5 - crownHeight * 0.6);
+        enemy.graphics.lineTo(-enemy.size * 0.4, -enemy.size * 0.5 - crownHeight * 0.3);
+        enemy.graphics.lineTo(-enemy.size * 0.2, -enemy.size * 0.5 - crownHeight * 0.8);
+        enemy.graphics.lineTo(0, -enemy.size * 0.5 - crownHeight * 0.4);
+        enemy.graphics.lineTo(enemy.size * 0.2, -enemy.size * 0.5 - crownHeight * 0.8);
+        enemy.graphics.lineTo(enemy.size * 0.4, -enemy.size * 0.5 - crownHeight * 0.3);
+        enemy.graphics.lineTo(enemy.size * 0.6, -enemy.size * 0.5 - crownHeight * 0.6);
+        enemy.graphics.lineTo(enemy.size * 0.6, -enemy.size * 0.5);
+        enemy.graphics.closePath();
+        enemy.graphics.endFill();
 
-        // Evil eyes
-        ctx.fillStyle = 'white';
-        ctx.beginPath();
-        ctx.arc(enemy.x - enemy.size * 0.25, enemy.y - enemy.size * 0.1, 4, 0, Math.PI * 2);
-        ctx.arc(enemy.x + enemy.size * 0.25, enemy.y - enemy.size * 0.1, 4, 0, Math.PI * 2);
-        ctx.fill();
+        // Gesicht
+        enemy.graphics.beginFill(0x7d241e);
+        enemy.graphics.drawCircle(0, 0, enemy.size * 0.6);
+        enemy.graphics.endFill();
 
-        ctx.fillStyle = 'red';
-        ctx.beginPath();
-        ctx.arc(enemy.x - enemy.size * 0.25, enemy.y - enemy.size * 0.1, 2, 0, Math.PI * 2);
-        ctx.arc(enemy.x + enemy.size * 0.25, enemy.y - enemy.size * 0.1, 2, 0, Math.PI * 2);
-        ctx.fill();
+        // Böse Augen
+        enemy.graphics.beginFill(0xFFFFFF);
+        enemy.graphics.drawCircle(-enemy.size * 0.25, -enemy.size * 0.1, 4);
+        enemy.graphics.drawCircle(enemy.size * 0.25, -enemy.size * 0.1, 4);
+        enemy.graphics.endFill();
+
+        enemy.graphics.beginFill(0xFF0000);
+        enemy.graphics.drawCircle(-enemy.size * 0.25, -enemy.size * 0.1, 2);
+        enemy.graphics.drawCircle(enemy.size * 0.25, -enemy.size * 0.1, 2);
+        enemy.graphics.endFill();
     }
 }
