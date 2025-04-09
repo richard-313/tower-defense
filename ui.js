@@ -27,6 +27,9 @@ class GameUI {
         this.startWaveButton = document.getElementById('startWave');
         this.countdownElement = document.getElementById('countdown');
 
+        // Neue UI-Elemente für Multiple-Wave Buttons
+        this.createMultiWaveButtons();
+
         // Radial-Menü-Element
         this.radialMenu = document.getElementById('radialTowerMenu');
         this.radialCancelButton = document.getElementById('radialCancelButton');
@@ -38,8 +41,6 @@ class GameUI {
             slow: document.getElementById('radialSlowTower'),
             bomb: document.getElementById('radialBombTower')
         };
-
-
 
         // Aktualisiere die Kosten in den data-cost Attributen (falls sich towerTypes ändert)
         this.radialTowerOptions.basic.setAttribute('data-cost', towerTypes.basic.cost);
@@ -69,6 +70,52 @@ class GameUI {
         this.updateUI();
     }
 
+    // Neue Methode zum Erstellen der Multiple-Wave-Buttons
+    createMultiWaveButtons() {
+        // Container für die Buttons erstellen
+        const waveButtonsContainer = document.createElement('div');
+        waveButtonsContainer.className = 'multi-wave-buttons';
+
+        // Styling für das Container-Element
+        waveButtonsContainer.style.display = 'flex';
+        waveButtonsContainer.style.justifyContent = 'center';
+        waveButtonsContainer.style.gap = '5px';
+        waveButtonsContainer.style.marginTop = '5px';
+
+        // Buttons erstellen
+        this.waveButton2x = document.createElement('button');
+        this.waveButton2x.className = 'wave-button';
+        this.waveButton2x.textContent = '+2 Wellen';
+        this.waveButton2x.style.padding = '5px 10px';
+        this.waveButton2x.style.backgroundColor = '#a24a1c';
+        this.waveButton2x.style.color = '#f9e9c3';
+        this.waveButton2x.style.border = '2px solid #8B5A2B';
+        this.waveButton2x.style.borderRadius = '4px';
+        this.waveButton2x.style.fontFamily = "'MedievalSharp', cursive";
+        this.waveButton2x.style.fontSize = '14px';
+        this.waveButton2x.style.cursor = 'pointer';
+
+        this.waveButton3x = document.createElement('button');
+        this.waveButton3x.className = 'wave-button';
+        this.waveButton3x.textContent = '+3 Wellen';
+        this.waveButton3x.style.padding = '5px 10px';
+        this.waveButton3x.style.backgroundColor = '#8e3218';
+        this.waveButton3x.style.color = '#f9e9c3';
+        this.waveButton3x.style.border = '2px solid #8B5A2B';
+        this.waveButton3x.style.borderRadius = '4px';
+        this.waveButton3x.style.fontFamily = "'MedievalSharp', cursive";
+        this.waveButton3x.style.fontSize = '14px';
+        this.waveButton3x.style.cursor = 'pointer';
+
+        // Buttons zum Container hinzufügen
+        waveButtonsContainer.appendChild(this.waveButton2x);
+        waveButtonsContainer.appendChild(this.waveButton3x);
+
+        // Container zur wave-timer-div hinzufügen
+        const waveTimerDiv = document.querySelector('.wave-timer');
+        waveTimerDiv.appendChild(waveButtonsContainer);
+    }
+
     initEventListeners() {
         // Events für Turm-Optionen im Radialmenü
         for (const [type, element] of Object.entries(this.radialTowerOptions)) {
@@ -95,6 +142,10 @@ class GameUI {
 
         // Wellenkontrolle
         this.startWaveButton.addEventListener('click', () => this.startNextWave());
+
+        // Neue Buttons für mehrere Wellen
+        this.waveButton2x.addEventListener('click', () => this.startMultipleWaves(2));
+        this.waveButton3x.addEventListener('click', () => this.startMultipleWaves(3));
 
         // Upgrade-Panel-Steuerung
         this.upgradeDirectlyButton.addEventListener('click', () => this.upgradeTower());
@@ -274,6 +325,20 @@ class GameUI {
         return this.towerManager.addTower(type, x, y);
     }
 
+    // Methode für mehrere Wellen starten
+    startMultipleWaves(count) {
+        // Den enemyManager anweisen, mehrere Wellen zu starten
+        this.enemyManager.queueWaves(count);
+
+        // UI-Elemente aktualisieren
+        this.waveElement.textContent = this.enemyManager.waveNumber;
+        this.updateUI();
+
+        // Alle offenen Menüs schließen
+        this.hideRadialMenu();
+        this.closeUpgradePanel();
+    }
+
     startNextWave() {
         // Nächste Welle starten
         const waveNumber = this.enemyManager.startNextWave(() => {
@@ -285,7 +350,10 @@ class GameUI {
 
         // UI aktualisieren
         this.waveElement.textContent = waveNumber;
-        this.startWaveButton.disabled = true;
+
+        // Start-Button soll während der laufenden Welle verfügbar bleiben
+        // damit der Spieler mehrere Wellen starten kann
+        //this.startWaveButton.disabled = true;
 
         // Alle offenen Menüs schließen
         this.hideRadialMenu();
@@ -304,14 +372,11 @@ class GameUI {
             // Welle wurde automatisch gestartet
             this.waveElement.textContent = this.enemyManager.waveNumber;
             // Sicherstellen, dass die UI aktualisiert wird
-            this.startWaveButton.disabled = true;
+            this.updateUI();
         });
 
         // Countdown-Anzeige aktualisieren
         this.updateCountdown();
-
-        // Start-Button aktivieren
-        this.startWaveButton.disabled = false;
     }
 
     updateCountdown() {
@@ -518,8 +583,18 @@ class GameUI {
         this.goldElement.textContent = this.gold;
         this.waveElement.textContent = this.enemyManager.waveNumber;
 
-        // Wellen-Button aktualisieren
-        this.startWaveButton.disabled = this.enemyManager.waveInProgress;
+        // Anzeige der ausstehenden Wellen aktualisieren
+        if (this.enemyManager.pendingWaves > 0) {
+            this.startWaveButton.textContent = `Welle starten (+${this.enemyManager.pendingWaves} ausstehend)`;
+        } else {
+            this.startWaveButton.textContent = 'Welle starten';
+        }
+
+        // Wir halten die Buttons immer aktiv, damit der Spieler mehrere Wellen starten kann
+        // Nur bei Game Over deaktivieren wir sie
+        this.startWaveButton.disabled = this.lives <= 0;
+        this.waveButton2x.disabled = this.lives <= 0;
+        this.waveButton3x.disabled = this.lives <= 0;
 
         // Falls das Radialmenü offen ist, verfügbare Türme aktualisieren
         if (this.radialMenu.style.display === 'block') {

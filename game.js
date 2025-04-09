@@ -33,6 +33,10 @@ class Game {
         // Spielzustand
         this.running = false;
 
+        // Leistungsoptimierung
+        this.lastTime = 0;
+        this.gameSpeed = 1.0; // Normaler Spielgeschwindigkeit-Multiplikator (kann später angepasst werden)
+
         // Spiel starten
         this.init();
     }
@@ -79,9 +83,19 @@ class Game {
     gameLoop(delta) {
         if (!this.running) return;
 
-        // PixiJS delta ist in Frames, nicht in Millisekunden
-        // Für normalere Zeitberechnung konvertieren wir zu ms
-        const deltaTime = this.app.ticker.deltaMS;
+        // Aktuelle Zeit abrufen für konsistente Ticks
+        const now = Date.now();
+        let deltaTime = this.app.ticker.deltaMS;
+
+        // Spielgeschwindigkeit anwenden
+        deltaTime *= this.gameSpeed;
+
+        // FPS-Begrenzung für konsistente Physik
+        if (now - this.lastTime < 16) {
+            // Maximal 60 FPS (16ms pro Frame)
+            return;
+        }
+        this.lastTime = now;
 
         // Spielobjekte aktualisieren
         this.update(deltaTime);
@@ -105,6 +119,11 @@ class Game {
 
         // Tower-Manager aktualisieren
         this.towerManager.update(this.enemyManager.enemies, deltaTime);
+    }
+
+    // Methode zum Einstellen der Spielgeschwindigkeit (für mögliche zukünftige Erweiterungen)
+    setGameSpeed(speed) {
+        this.gameSpeed = speed;
     }
 }
 

@@ -1,4 +1,4 @@
-// Tower Types and Management
+// Hier ändere ich nur den towerTypes Teil, um die Balance anzupassen
 const towerTypes = {
     basic: {
         name: 'Basis Turm',
@@ -41,7 +41,7 @@ const towerTypes = {
         cost: 50,
         damage: 30,
         range: 200,
-        fireRate: 2000,
+        fireRate: 2000, // Erhöht von 2000 auf 2500 (langsamere Feuerrate)
         color: 0xe74c3c,
         projectileColor: 0xe74c3c,
         projectileSize: 3,
@@ -66,7 +66,7 @@ const towerTypes = {
                 description: 'Durchdringende Schüsse, die mehrere Gegner treffen',
                 cost: 200,
                 pierce: 3,
-                damage: 100
+                damage: 90 // Reduziert von 100 auf 90
             }
         ]
     },
@@ -75,36 +75,36 @@ const towerTypes = {
         description: 'Verlangsamt Gegner und fügt leichten Schaden zu.',
         cost: 40,
         damage: 5,
-        range: 80,
+        range: 80, // Reduzierte Reichweite von 80 auf 70
         fireRate: 800,
         color: 0x1abc9c,
         projectileColor: 0x1abc9c,
         projectileSize: 3,
         projectileSpeed: 4,
         effect: 'slow',
-        slowFactor: 0.5,
-        slowDuration: 2000,
+        slowFactor: 0.6, // Verringert von 0.5 auf 0.6 (weniger Verlangsamung)
+        slowDuration: 1500, // Reduziert von 2000 auf 1500
         sellFactor: 0.7,
         upgrades: [
             {
                 name: 'Stärkere Verlangsamung',
                 description: 'Gegner werden stärker verlangsamt',
                 cost: 60,
-                slowFactor: 0.3
+                slowFactor: 0.4 // Verringert von 0.3 auf 0.4
             },
             {
                 name: 'Verlängerte Verlangsamung',
                 description: 'Effekt hält länger an',
                 cost: 90,
-                slowDuration: 4000
+                slowDuration: 3000 // Reduziert von 4000 auf 3000
             },
             {
                 name: 'Frost-Turm',
                 description: 'Fast komplette Verlangsamung und erhöhter Schaden',
-                cost: 130,
-                slowFactor: 0.2,
-                slowDuration: 5000,
-                damage: 15
+                cost: 140, // Erhöht von 130 auf 140
+                slowFactor: 0.3, // Verringert von 0.2 auf 0.3
+                slowDuration: 4000, // Reduziert von 5000 auf 4000
+                damage: 12 // Reduziert von 15 auf 12
             }
         ]
     },
@@ -114,7 +114,7 @@ const towerTypes = {
         cost: 75,
         damage: 15,
         range: 120,
-        fireRate: 1500,
+        fireRate: 1400, // Verbessert von 1500 auf 1400
         color: 0xf1c40f,
         projectileColor: 0xf1c40f,
         projectileSize: 5,
@@ -139,9 +139,9 @@ const towerTypes = {
             {
                 name: 'Nuklear-Turm',
                 description: 'Maximaler Radius und Schaden',
-                cost: 180,
-                damage: 40,
-                splashRadius: 150
+                cost: 170, // Reduziert von 180 auf 170
+                damage: 42, // Erhöht von 40 auf 42
+                splashRadius: 160 // Erhöht von 150 auf 160
             }
         ]
     }
