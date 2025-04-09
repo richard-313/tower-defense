@@ -1,59 +1,3 @@
-// Enemy Types and Management
-const enemyTypes = {
-    normal: {
-        name: 'Bauer',
-        health: 50,
-        speed: 1,
-        reward: 10,
-        color: 0x7f8c8d,
-        size: 15
-    },
-    fast: {
-        name: 'Späher',
-        health: 30,
-        speed: 2,
-        reward: 15,
-        color: 0x9b59b6,
-        size: 12
-    },
-    tank: {
-        name: 'Ritter',
-        health: 150,
-        speed: 0.5,
-        reward: 20,
-        color: 0x2c3e50,
-        size: 18
-    },
-    boss: {
-        name: 'Kriegsherr',
-        health: 300,
-        speed: 0.7,
-        reward: 50,
-        color: 0xc0392b,
-        size: 25
-    },
-    // Neuer Gegnertyp: Immun gegen Verlangsamung
-    immune: {
-        name: 'Hexer',
-        health: 120,
-        speed: 1.2,
-        reward: 25,
-        color: 0x8e44ad,
-        size: 16,
-        immuneToSlow: true
-    },
-    // Neuer Gegnertyp: Regeneriert seine Gesundheit
-    regen: {
-        name: 'Kleriker',
-        health: 100,
-        speed: 0.8,
-        reward: 30,
-        color: 0x27ae60,
-        size: 17,
-        regeneration: 0.2 // Gesundheit pro Sekunde
-    }
-};
-
 class EnemyManager {
     constructor(app, path) {
         this.app = app;
@@ -66,177 +10,144 @@ class EnemyManager {
         this.enemies = [];
         this.path = path;
         this.waveNumber = 0;
-        this.waveInProgress = false; // Indicates if enemies are currently active or being spawned
-        this.enemiesRemaining = 0; // Total enemies expected in the current cycle
+        this.waveInProgress = false;
+        this.enemiesRemaining = 0;
         this.spawnInterval = null;
         this.autoStartTimer = null;
         this.countdownTime = 0;
-        this.onWaveComplete = null; // Callback for when the entire batch of waves is clear
+        this.onWaveComplete = null; // Callback, wenn die Welle fertig ist
 
-        this.pendingWaves = 0; // Number of waves waiting to be processed
-        this.enemiesToSpawnQueue = []; // Queue of enemy definitions to spawn
+        // Neue Eigenschaften für mehrere Wellen
+        this.pendingWaves = 0; // Anzahl der wartenden Wellen
+        this.continuousSpawn = false; // Flag für kontinuierliches Spawnen
 
-        // Sprites für verschiedene Feindtypen (if needed, otherwise remove)
-        // this.enemySprites = {}; // Currently unused
+        // Sprites für verschiedene Feindtypen
+        this.enemySprites = {};
     }
 
     updatePath(newPath) {
         this.path = newPath;
     }
 
-    // Queue one or more waves to start
-    queueWaves(count, callback) {
-        if (count <= 0) return this.waveNumber + this.pendingWaves;
-
+    // Neue Methode: Mehrere Wellen starten
+    queueWaves(count) {
         this.pendingWaves += count;
 
-        // If not currently processing waves, start the cycle
-        if (!this.waveInProgress && !this.spawnInterval) {
-            // Use a small delay to allow multiple clicks in the same frame/tick
-            setTimeout(() => {
-                // Double check if another process started in the meantime
-                if (!this.waveInProgress && !this.spawnInterval && this.pendingWaves > 0) {
-                    this._startProcessingPendingWaves(callback);
-                }
-            }, 10); // 10ms delay
+        // Starte die erste Welle, wenn keine im Gange ist
+        if (!this.waveInProgress) {
+            this.startNextWave(this.onWaveComplete);
         }
-
-        // Return the highest wave number expected after this queue request
-        return this.waveNumber + this.pendingWaves;
     }
 
-    // Internal function to start spawning all currently pending waves
-    _startProcessingPendingWaves(callback) {
-        if (this.pendingWaves <= 0 || this.waveInProgress) return; // Don't start if nothing pending or already running
+    startNextWave(callback) {
+        if (this.waveInProgress) {
+            // Wenn bereits eine Welle läuft, erhöhen wir nur pendingWaves
+            this.pendingWaves++;
+            return this.waveNumber;
+        }
 
-        console.log(`Starting processing for ${this.pendingWaves} pending waves. Current wave: ${this.waveNumber}`);
-
+        this.waveNumber++;
         this.waveInProgress = true;
-        this.onWaveComplete = callback; // Store the callback for when the *entire* batch is done
-        this.enemiesToSpawnQueue = []; // Reset the spawn queue for this new batch
-        let totalEnemiesThisCycle = 0;
+        this.onWaveComplete = callback; // Callback speichern
 
-        // Process all pending waves
-        while (this.pendingWaves > 0) {
-            this.waveNumber++;
+        // Welle basierend auf dem aktuellen Fortschritt generieren
+        this.spawnWave();
+
+        // Wenn pendingWaves > 0 ist, werden weitere Wellen nach dieser automatisch starten
+        if (this.pendingWaves > 0) {
             this.pendingWaves--;
-
-            // Generate enemies for the current wave number
-            const waveEnemies = this._generateEnemiesForWave(this.waveNumber);
-            this.enemiesToSpawnQueue.push(...waveEnemies); // Add enemies to the main queue
-            totalEnemiesThisCycle += waveEnemies.length;
         }
 
-        this.enemiesRemaining = totalEnemiesThisCycle; // Total enemies for this entire batch
-
-        console.log(`Total enemies to spawn in this cycle: ${this.enemiesRemaining}`);
-
-        // Start the single spawn interval for this batch
-        this._startSpawnInterval();
+        return this.waveNumber;
     }
 
-    // Generates an array of enemy definitions for a specific wave number
-    _generateEnemiesForWave(waveNum) {
-        const waveEnemiesList = [];
-        const waveDifficulty = this.calculateWaveDifficulty(waveNum); // Pass waveNum
+    spawnWave() {
+        // Dynamischer Schwierigkeitsgrad basierend auf der Wellennummer
+        const waveDifficulty = this.calculateWaveDifficulty();
 
-        const enemiesCount = Math.min(5 + waveNum * 2, 40); // Base count on specific wave
+        // Basismenge an Gegnern plus Wellennummer-Faktor
+        const enemiesCount = Math.min(5 + this.waveNumber * 2, 40); // Erhöhtes Maximum auf 40
+        this.enemiesRemaining = enemiesCount;
+        let enemiesSpawned = 0;
 
+        // Verschiedene Feindtypen je nach Welle
         const availableTypes = [];
         availableTypes.push('normal');
-        if (waveNum >= 3) availableTypes.push('fast');
-        if (waveNum >= 5) availableTypes.push('tank');
-        if (waveNum >= 8) availableTypes.push('immune');
-        if (waveNum >= 10) availableTypes.push('regen');
-        if (waveNum >= 8 && waveNum % 5 === 0) {
-            availableTypes.push('boss');
-            if (waveNum >= 15) availableTypes.push('boss');
-            if (waveNum >= 25) availableTypes.push('boss');
+
+        if (this.waveNumber >= 3) availableTypes.push('fast');
+        if (this.waveNumber >= 5) availableTypes.push('tank');
+        if (this.waveNumber >= 8) availableTypes.push('immune'); // Neuer Gegnertyp ab Welle 8
+        if (this.waveNumber >= 10) availableTypes.push('regen'); // Neuer Gegnertyp ab Welle 10
+
+        // Bosse erscheinen jetzt häufiger in späteren Wellen
+        if (this.waveNumber >= 8) {
+            if (this.waveNumber % 5 === 0) { // Alle 5 Wellen
+                availableTypes.push('boss');
+                // Mehr Bosse in höheren Wellen
+                if (this.waveNumber >= 15) availableTypes.push('boss');
+                if (this.waveNumber >= 25) availableTypes.push('boss');
+            }
         }
 
-        for (let i = 0; i < enemiesCount; i++) {
+        // Spawn-Intervall verringert sich mit höheren Wellen (schnellere Spawns)
+        const spawnDelay = Math.max(800 - this.waveNumber * 10, 300); // Minimum 300ms
+
+        // Spawn-Timer für Feinde
+        clearInterval(this.spawnInterval);
+        this.spawnInterval = setInterval(() => {
+            if (enemiesSpawned >= enemiesCount) {
+                clearInterval(this.spawnInterval);
+                return;
+            }
+
+            // Zufälligen Feindtyp auswählen
             const randomTypeIndex = Math.floor(Math.random() * availableTypes.length);
             const enemyType = availableTypes[randomTypeIndex];
             const enemyData = enemyTypes[enemyType];
 
+            // Gesundheit mit Wellennummer skalieren - jetzt exponentiell
+            // Erhöht die Schwierigkeit in späteren Wellen deutlicher
             let health = enemyData.health;
-            if (waveNum > 1) {
-                const healthMultiplier = 1 + (waveNum - 1) * 0.2 + Math.pow(waveNum / 10, 2);
+            if (this.waveNumber > 1) {
+                // Neue, stärkere Skalierung mit exponentiellem Wachstum
+                const healthMultiplier = 1 + (this.waveNumber - 1) * 0.2 + Math.pow(this.waveNumber / 10, 2);
                 health = Math.round(health * healthMultiplier);
             }
 
+            // Geschwindigkeit leicht erhöhen in späteren Wellen
             let speed = enemyData.speed;
-            if (waveNum > 10) {
-                speed = enemyData.speed * (1 + (waveNum - 10) * 0.01);
+            if (this.waveNumber > 10) {
+                speed = enemyData.speed * (1 + (this.waveNumber - 10) * 0.01);
             }
 
-            const variation = 0.85 + Math.random() * 0.3;
+            // Zufällige Variation für mehr Vielfalt
+            const variation = 0.85 + Math.random() * 0.3; // 0.85 - 1.15
             health = Math.round(health * variation);
 
-            // Add enemy definition to the list for this wave
-            waveEnemiesList.push({
-                type: enemyType,
-                data: enemyData,
-                health: health,
-                speed: speed
-            });
-        }
-        return waveEnemiesList;
-    }
-
-    // Starts the interval that spawns enemies from the queue
-    _startSpawnInterval() {
-        // Clear any existing interval (shouldn't be necessary with checks, but safe)
-        clearInterval(this.spawnInterval);
-        this.spawnInterval = null;
-
-        if (this.enemiesToSpawnQueue.length === 0) {
-            console.log("Spawn queue is empty, not starting interval.");
-            // If queue is empty but we thought we were starting, check completion state
-            if (this.enemies.length === 0 && this.enemiesRemaining <= 0) {
-                this._checkWaveCompletion();
-            }
-            return;
-        }
-
-        // Calculate spawn delay (e.g., based on the highest wave number processed)
-        const spawnDelay = Math.max(800 - this.waveNumber * 10, 300);
-
-        console.log(`Starting spawn interval with delay ${spawnDelay}ms for ${this.enemiesToSpawnQueue.length} enemies.`);
-
-        this.spawnInterval = setInterval(() => {
-            if (this.enemiesToSpawnQueue.length === 0) {
-                console.log("Spawn queue emptied, clearing interval.");
-                clearInterval(this.spawnInterval);
-                this.spawnInterval = null;
-                // Do NOT reset waveInProgress here, wait for enemies to be cleared
-                this._checkWaveCompletion(); // Check if wave is complete now that spawning finished
-                return;
-            }
-
-            // Dequeue and spawn one enemy
-            const enemyDef = this.enemiesToSpawnQueue.shift();
-            this.createEnemy(enemyDef.type, enemyDef.data, enemyDef.health, enemyDef.speed);
-
+            // Neuen Feind erstellen mit angepasster Geschwindigkeit
+            this.createEnemy(enemyType, enemyData, health, speed);
+            enemiesSpawned++;
         }, spawnDelay);
     }
 
-
-    // Renamed from calculateWaveDifficulty - ensure it accepts waveNum if needed, or uses this.waveNumber
-    calculateWaveDifficulty(waveNum) { // Added parameter
+    // Neue Methode zur Berechnung des Schwierigkeitsgrads basierend auf der Wellennummer
+    calculateWaveDifficulty() {
+        // Einfache lineare Funktion mit einem höheren Faktor in späteren Wellen
         let difficulty = 1.0;
-        if (waveNum <= 10) {
-            difficulty = 1.0 + (waveNum - 1) * 0.1;
-        } else if (waveNum <= 20) {
-            difficulty = 2.0 + (waveNum - 10) * 0.2;
+
+        if (this.waveNumber <= 10) {
+            difficulty = 1.0 + (this.waveNumber - 1) * 0.1; // 1.0 - 1.9
+        } else if (this.waveNumber <= 20) {
+            difficulty = 2.0 + (this.waveNumber - 10) * 0.2; // 2.0 - 3.8
         } else {
-            difficulty = 4.0 + (waveNum - 20) * 0.3;
+            difficulty = 4.0 + (this.waveNumber - 20) * 0.3; // 4.0+
         }
+
         return difficulty;
     }
 
     createEnemy(type, enemyData, health, speed = null) {
-        // ... (rest of createEnemy remains the same)
+        // PIXI Container erstellen
         const enemyContainer = new PIXI.Container();
         enemyContainer.x = this.path[0].x;
         enemyContainer.y = this.path[0].y;
@@ -262,7 +173,7 @@ class EnemyManager {
         enemyContainer.addChild(healthBar);
 
         // Verwende übergebene Geschwindigkeit oder Standard
-        const actualSpeed = speed !== null ? speed : enemyData.speed; // Use provided speed if available
+        const actualSpeed = speed || enemyData.speed;
 
         // Feind-Daten
         const enemy = {
@@ -309,7 +220,6 @@ class EnemyManager {
         this.enemies.push(enemy);
 
         return enemy;
-        // ... (rest of createEnemy remains the same)
     }
 
     scheduleNextWave(waitTime, callback) {
@@ -321,36 +231,16 @@ class EnemyManager {
 
             if (this.countdownTime <= 0) {
                 clearInterval(this.autoStartTimer);
-                // Automatically queue 1 wave when timer runs out
-                this.queueWaves(1, callback);
-                // Update UI immediately after queuing
-                if (window.game && window.game.gameUI) { // Access UI safely
-                    window.game.gameUI.updateUI();
-                }
+                this.startNextWave(callback);
             }
-            // Update countdown display every second
-            if (window.game && window.game.gameUI) { // Access UI safely
-                window.game.gameUI.updateCountdownDisplay();
-            }
-
         }, 1000);
-
-        // Initial countdown display update
-        if (window.game && window.game.gameUI) { // Access UI safely
-            window.game.gameUI.updateCountdownDisplay();
-        }
 
         return this.countdownTime;
     }
 
     cancelWaveTimer() {
         clearInterval(this.autoStartTimer);
-        this.autoStartTimer = null; // Clear the interval ID
         this.countdownTime = 0;
-        // Update countdown display
-        if (window.game && window.game.gameUI) { // Access UI safely
-            window.game.gameUI.updateCountdownDisplay();
-        }
     }
 
     getCurrentCountdown() {
@@ -364,7 +254,6 @@ class EnemyManager {
         for (let i = this.enemies.length - 1; i >= 0; i--) {
             const enemy = this.enemies[i];
 
-            // ... (enemy logic: regeneration, slow check, movement) ...
             // Gesundheits-Regeneration für bestimmte Gegnertypen
             if (enemy.regeneration > 0) {
                 const currentTime = Date.now();
@@ -406,9 +295,7 @@ class EnemyManager {
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             // Wenn nahe genug am Wegpunkt, zum nächsten Wegpunkt übergehen
-            // Adjust threshold based on speed and timeScale to prevent skipping points
-            const threshold = Math.max(enemy.speed * 2 * timeScale, enemy.speed);
-            if (distance < threshold) {
+            if (distance < enemy.speed * 2 * timeScale) {
                 enemy.pathIndex++;
 
                 // Wenn das Ende des Pfades erreicht ist
@@ -418,46 +305,37 @@ class EnemyManager {
 
                     // Feind entfernen
                     this.removeEnemy(i);
-                    this.enemiesRemaining--; // Decrement remaining count
-                    console.log(`Enemy escaped. Remaining: ${this.enemiesRemaining}`);
-                    continue; // Skip rest of update for this enemy
-                }
-                // Ensure the enemy snaps to the waypoint to avoid path deviations
-                enemy.x = targetPoint.x;
-                enemy.y = targetPoint.y;
-            }
-
-            // Ensure there's a next target point before calculating movement towards it
-            if (enemy.pathIndex < this.path.length) {
-                const newTargetPoint = this.path[enemy.pathIndex];
-                const newDx = newTargetPoint.x - enemy.x;
-                const newDy = newTargetPoint.y - enemy.y;
-                const newDistance = Math.sqrt(newDx * newDx + newDy * newDy);
-
-                // Normalisierte Richtung
-                if (newDistance > 0) {
-                    const dirX = newDx / newDistance;
-                    const dirY = newDy / newDistance;
-
-                    // Feind bewegen
-                    const moveAmount = Math.min(enemy.speed * timeScale, newDistance); // Don't overshoot
-                    enemy.x += dirX * moveAmount;
-                    enemy.y += dirY * moveAmount;
-
-
-                    // Sprite-Position aktualisieren
-                    enemy.sprite.x = enemy.x;
-                    enemy.sprite.y = enemy.y;
-
-                    // Gesundheitsbalken aktualisieren
-                    const healthPercentage = enemy.health / enemy.maxHealth;
-                    enemy.healthBar.clear();
-                    enemy.healthBar.beginFill(0x00FF00);
-                    enemy.healthBar.drawRect(-enemy.size, -enemy.size - 10, enemy.size * 2 * healthPercentage, 5);
-                    enemy.healthBar.endFill();
+                    this.enemiesRemaining--;
+                    continue;
                 }
             }
 
+            // Feind zum aktuellen Wegpunkt bewegen
+            const newTargetPoint = this.path[enemy.pathIndex];
+            const newDx = newTargetPoint.x - enemy.x;
+            const newDy = newTargetPoint.y - enemy.y;
+            const newDistance = Math.sqrt(newDx * newDx + newDy * newDy);
+
+            // Normalisierte Richtung
+            if (newDistance > 0) {
+                const dirX = newDx / newDistance;
+                const dirY = newDy / newDistance;
+
+                // Feind bewegen
+                enemy.x += dirX * enemy.speed * timeScale;
+                enemy.y += dirY * enemy.speed * timeScale;
+
+                // Sprite-Position aktualisieren
+                enemy.sprite.x = enemy.x;
+                enemy.sprite.y = enemy.y;
+
+                // Gesundheitsbalken aktualisieren
+                const healthPercentage = enemy.health / enemy.maxHealth;
+                enemy.healthBar.clear();
+                enemy.healthBar.beginFill(0x00FF00);
+                enemy.healthBar.drawRect(-enemy.size, -enemy.size - 10, enemy.size * 2 * healthPercentage, 5);
+                enemy.healthBar.endFill();
+            }
 
             // Feind entfernen, wenn er tot ist
             if (enemy.health <= 0) {
@@ -466,75 +344,43 @@ class EnemyManager {
 
                 // Feind entfernen
                 this.removeEnemy(i);
-                this.enemiesRemaining--; // Decrement remaining count
-                console.log(`Enemy killed. Remaining: ${this.enemiesRemaining}`);
+                this.enemiesRemaining--;
             }
         }
 
         // Effekte aktualisieren
         this.updateEffects();
 
-        // Prüfen, ob die Welle/der Zyklus abgeschlossen ist
-        // Moved the completion check to a separate function
-        const cycleComplete = this._checkWaveCompletion();
-
-        return cycleComplete; // Return true if the entire cycle is complete
-    }
-
-    // Checks if the current wave cycle is complete
-    _checkWaveCompletion() {
-        // Completion condition:
-        // 1. waveInProgress was set to true (meaning a cycle started)
-        // 2. No enemies are left on the screen
-        // 3. The total expected number of enemies for this cycle has reached zero or less
-        // 4. The spawn queue is empty
-        // 5. The spawn interval is not running
-        if (this.waveInProgress &&
-            this.enemies.length === 0 &&
-            this.enemiesRemaining <= 0 &&
-            this.enemiesToSpawnQueue.length === 0 &&
-            !this.spawnInterval) {
-            console.log(`Wave cycle ending (Wave ${this.waveNumber} finished).`);
+        // Prüfen, ob die Welle abgeschlossen ist
+        if (this.waveInProgress && this.enemies.length === 0 && this.enemiesRemaining <= 0) {
             this.waveInProgress = false;
 
-            // Trigger the callback stored when the cycle started
-            if (this.onWaveComplete) {
-                this.onWaveComplete(); // Call the callback (e.g., scheduleNextWave in UI)
-                this.onWaveComplete = null; // Clear callback once used
-            }
-
-            // Automatically start processing next pending waves if any were added *during* the last cycle
+            // Wenn pendingWaves > 0 ist, direkt die nächste Welle starten
             if (this.pendingWaves > 0) {
-                console.log(`Found ${this.pendingWaves} more pending waves. Starting next cycle.`);
-                // Need a way to get the UI callback here if we want auto-scheduling
-                // For now, let's rely on the manual start or the timer.
-                // Or, assume the original callback is reusable? Let's try that.
-                // This might cause issues if the callback logic isn't designed for re-use.
-                // A safer approach is to require manual start for subsequent batches.
-                // Let's stick to manual/timer starts for now.
-                // this._startProcessingPendingWaves(this.onWaveComplete); // Potentially problematic re-use
-
-                // Update UI to reflect pending waves are ready
-                if (window.game && window.game.gameUI) {
-                    window.game.gameUI.updateUI();
-                }
+                setTimeout(() => {
+                    this.startNextWave(this.onWaveComplete);
+                }, 500); // Kurze Verzögerung zwischen Wellen
+            } else if (this.onWaveComplete) {
+                this.onWaveComplete();
             }
 
-
-            return true; // Cycle completed
+            return true; // Welle abgeschlossen
         }
-        return false; // Cycle still in progress
+
+        return false; // Welle noch im Gange
     }
 
     removeEnemy(index) {
         if (index >= 0 && index < this.enemies.length) {
+            // Sprite von der Stage entfernen
             const enemy = this.enemies[index];
             this.container.removeChild(enemy.sprite);
+
+            // Aus dem Array entfernen
             this.enemies.splice(index, 1);
         }
     }
 
-    // ... (applyEffect, showImmuneEffect, createRegenerationEffect, addSlowEffect, updateEffects remain the same) ...
     applyEffect(enemy, effect, duration, value) {
         switch (effect) {
             case 'slow':
@@ -545,26 +391,19 @@ class EnemyManager {
                     return;
                 }
 
-                // Apply slow only if not already slowed or if the new slow is stronger/longer?
-                // Simple approach: Overwrite existing slow if new one is applied.
-                if (!enemy.slowed || (Date.now() + duration > enemy.slowUntil)) {
-                    enemy.slowed = true;
-                    // Ensure baseSpeed is set correctly if slowed multiple times
-                    enemy.baseSpeed = enemy.baseSpeed || enemy.speed;
-                    enemy.speed = enemy.baseSpeed * value; // Apply slow factor
-                    enemy.slowUntil = Date.now() + duration;
+                enemy.slowed = true;
+                enemy.baseSpeed = enemy.baseSpeed || enemy.speed; // Ursprüngliche Geschwindigkeit speichern
+                enemy.speed = enemy.baseSpeed * value; // Um Faktor verlangsamen
+                enemy.slowUntil = Date.now() + duration;
 
-                    // Visuellen Effekt hinzufügen (only if not already visually slowed?)
-                    // Maybe check enemy.effects? For simplicity, let's re-add visual for now.
-                    this.addSlowEffect(enemy); // Consider optimizing this later
+                // Visuellen Effekt hinzufügen
+                this.addSlowEffect(enemy);
 
-                    // Zum Effekte-Array hinzufügen (or update existing)
-                    // Simple approach: just add, update loop will handle cleanup later
-                    enemy.effects.push({
-                        type: 'slow',
-                        until: enemy.slowUntil
-                    });
-                }
+                // Zum Effekte-Array hinzufügen
+                enemy.effects.push({
+                    type: 'slow',
+                    until: enemy.slowUntil
+                });
                 break;
 
             // Weitere Effekte hier hinzufügen nach Bedarf
@@ -586,9 +425,7 @@ class EnemyManager {
 
         // Effekt nach kurzer Zeit wieder entfernen
         setTimeout(() => {
-            if (immuneEffect.parent) { // Check if still attached before removing
-                this.effectsContainer.removeChild(immuneEffect);
-            }
+            this.effectsContainer.removeChild(immuneEffect);
         }, 300);
     }
 
@@ -614,26 +451,16 @@ class EnemyManager {
 
             // Animation: Nach oben schweben und verblassen
             let duration = 0;
-            const animate = (delta) => { // Pass delta
-                const deltaMS = this.app.ticker.deltaMS; // Use Pixi's deltaMS
-                duration += deltaMS / 1000;
+            const animate = () => {
+                duration += this.app.ticker.deltaMS / 1000;
 
                 if (duration >= 1) {
-                    if (particle.parent) { // Check parent before removing
-                        this.effectsContainer.removeChild(particle);
-                    }
+                    this.effectsContainer.removeChild(particle);
                     this.app.ticker.remove(animate);
                     return;
                 }
 
-                // Ensure enemy still exists before accessing position
-                if (!enemy || enemy.health <= 0) {
-                    if (particle.parent) this.effectsContainer.removeChild(particle);
-                    this.app.ticker.remove(animate);
-                    return;
-                }
-
-                particle.y -= 15 * deltaMS / 1000; // Nach oben bewegen
+                particle.y -= 15 * this.app.ticker.deltaMS / 1000; // Nach oben bewegen
                 particle.alpha = 1 - duration; // Transparenter werden
             };
 
@@ -642,14 +469,10 @@ class EnemyManager {
     }
 
     addSlowEffect(enemy) {
-        // Prevent adding multiple visual effects for the same slow instance if possible
-        // Check if a visual slow effect already exists for this enemy
-        // For simplicity now, we allow multiple visuals, but this could be optimized
-
         // Langsam-Effekt (blauer Ring)
         const slowEffect = new PIXI.Graphics();
-        slowEffect.lineStyle(2, 0x1abc9c); // Line style for the ring
-        slowEffect.drawCircle(0, 0, enemy.size + 3); // Draw the ring slightly larger than the enemy
+        slowEffect.lineStyle(2, 0x1abc9c);
+        slowEffect.drawCircle(0, 0, enemy.size + 3);
 
         // Schnee-Partikel
         const particles = [];
@@ -659,26 +482,18 @@ class EnemyManager {
             particle.drawCircle(0, 0, 1.5);
             particle.endFill();
             particles.push(particle);
-            slowEffect.addChild(particle); // Add particles to the slow effect graphic
+            slowEffect.addChild(particle);
         }
 
-        // Attach the effect to the effects container (not the enemy container)
-        // Position it initially at the enemy's current location
+        // Effekt zur Position des Feindes verschieben
         slowEffect.x = enemy.x;
         slowEffect.y = enemy.y;
+
+        // Zum Effekt-Container hinzufügen
         this.effectsContainer.addChild(slowEffect);
 
         // Animation hinzufügen
-        const animate = (delta) => { // Pass delta
-            // Check if enemy still exists and is slowed
-            if (!enemy || enemy.health <= 0 || !enemy.slowed || Date.now() > enemy.slowUntil) {
-                if (slowEffect.parent) { // Check parent before removing
-                    this.effectsContainer.removeChild(slowEffect);
-                }
-                this.app.ticker.remove(animate);
-                return;
-            }
-
+        const animate = () => {
             // Effekt mit dem Feind bewegen
             slowEffect.x = enemy.x;
             slowEffect.y = enemy.y;
@@ -687,10 +502,15 @@ class EnemyManager {
             const time = Date.now() / 300;
             for (let i = 0; i < particles.length; i++) {
                 const angle = time + i * Math.PI * 2 / 3;
-                // Adjust particle distance and movement for better visual effect
-                const dist = enemy.size * 0.5 + Math.sin(time * 1.5 + i) * 2; // Smaller orbit, slightly different speed
+                const dist = 5 + Math.sin(time * 2) * 2;
                 particles[i].x = Math.cos(angle) * dist;
                 particles[i].y = Math.sin(angle) * dist;
+            }
+
+            // Effekt beenden, wenn der Slow-Effekt abgelaufen ist oder der Feind tot ist
+            if (!enemy.slowed || enemy.health <= 0) {
+                this.effectsContainer.removeChild(slowEffect);
+                this.app.ticker.remove(animate);
             }
         };
 
@@ -698,17 +518,12 @@ class EnemyManager {
     }
 
     updateEffects() {
-        // Clean up expired effects from enemy.effects array if needed
-        // (Currently handled by direct property checks like enemy.slowed)
+        // Hier könnten später weitere Effektaktualisierungen hinzugefügt werden
     }
 
-
-    // ... (drawEnemyByType and specific drawing functions remain the same) ...
     drawEnemyByType(enemy) {
         // Grafik zurücksetzen
         enemy.graphics.clear();
-        // Add line style for potential outlines
-        enemy.graphics.lineStyle(1, 0x000000, 0.3); // Faint black outline
 
         switch (enemy.type) {
             case 'normal': // Bauer
@@ -745,197 +560,228 @@ class EnemyManager {
 
     drawNormalEnemy(enemy) {
         // Körper
-        enemy.graphics.beginFill(0x7f8c8d); // Grauer Körper
+        enemy.graphics.beginFill(0x7f8c8d);
         enemy.graphics.drawCircle(0, 0, enemy.size);
         enemy.graphics.endFill();
 
-        // Gesicht (einfacher)
+        // Gesicht
         enemy.graphics.beginFill(0xf5d7b5); // Hautfarbe
-        enemy.graphics.drawCircle(0, -enemy.size * 0.1, enemy.size * 0.6); // Etwas höher
+        enemy.graphics.drawCircle(0, -2, enemy.size * 0.6);
         enemy.graphics.endFill();
 
-        // Hut (Strohhut-Look)
-        enemy.graphics.beginFill(0xDAA520); // Goldgelb
-        enemy.graphics.drawEllipse(0, -enemy.size * 0.5, enemy.size * 0.9, enemy.size * 0.4); // Breiter Rand
-        enemy.graphics.endFill();
-        enemy.graphics.beginFill(0xB8860B); // Dunkleres Gelb für Hutkrone
-        enemy.graphics.drawCircle(0, -enemy.size * 0.7, enemy.size * 0.5); // Krone
+        // Hut
+        enemy.graphics.beginFill(0x964B00);
+        enemy.graphics.arc(0, -enemy.size * 0.5, enemy.size * 0.7, Math.PI, Math.PI * 2);
         enemy.graphics.endFill();
     }
 
     drawFastEnemy(enemy) {
-        // Bewegungsrichtung berechnen (optional, could be complex)
-        // let moveAngle = 0;
-        // if (enemy.pathIndex < this.path.length) {
-        //     moveAngle = Math.atan2(
-        //         this.path[enemy.pathIndex].y - enemy.y,
-        //         this.path[enemy.pathIndex].x - enemy.x
-        //     );
-        // }
+        // Bewegungsrichtung berechnen
+        const moveAngle = Math.atan2(
+            this.path[enemy.pathIndex].y - enemy.y,
+            this.path[enemy.pathIndex].x - enemy.x
+        );
 
-        // Körper (Dreiecksform für Geschwindigkeit)
-        enemy.graphics.beginFill(0x9b59b6); // Lila
-        enemy.graphics.moveTo(enemy.size, 0); // Spitze nach vorne (angenommen Bewegung nach rechts initial)
-        enemy.graphics.lineTo(-enemy.size * 0.5, enemy.size * 0.8);
-        enemy.graphics.lineTo(-enemy.size * 0.5, -enemy.size * 0.8);
+        // Bewegungsspur
+        enemy.graphics.beginFill(0x9b59b6, 0.3);
+        for (let i = 1; i <= 3; i++) {
+            enemy.graphics.drawCircle(
+                -Math.cos(moveAngle) * (i * 5),
+                -Math.sin(moveAngle) * (i * 5),
+                enemy.size - i * 2
+            );
+        }
+        enemy.graphics.endFill();
+
+        // Körper
+        enemy.graphics.beginFill(0x9b59b6);
+        enemy.graphics.drawCircle(0, 0, enemy.size);
+        enemy.graphics.endFill();
+
+        // Umhang
+        enemy.graphics.beginFill(0x8e44ad);
+        enemy.graphics.moveTo(0, 0);
+        enemy.graphics.lineTo(
+            -Math.cos(moveAngle) * enemy.size * 1.5,
+            -Math.sin(moveAngle) * enemy.size * 1.5
+        );
+        enemy.graphics.lineTo(
+            -Math.cos(moveAngle) * enemy.size * 1.2 + Math.sin(moveAngle) * enemy.size * 0.8,
+            -Math.sin(moveAngle) * enemy.size * 1.2 - Math.cos(moveAngle) * enemy.size * 0.8
+        );
+        enemy.graphics.lineTo(
+            -Math.cos(moveAngle) * enemy.size * 1.2 - Math.sin(moveAngle) * enemy.size * 0.8,
+            -Math.sin(moveAngle) * enemy.size * 1.2 + Math.cos(moveAngle) * enemy.size * 0.8
+        );
         enemy.graphics.closePath();
-        enemy.graphics.endFill();
-
-        // Bewegungsunschärfe-Effekt (einfach)
-        enemy.graphics.beginFill(0x9b59b6, 0.4);
-        enemy.graphics.drawEllipse(-enemy.size, 0, enemy.size * 1.5, enemy.size * 0.6); // Ellipse hinter dem Körper
-        enemy.graphics.endFill();
-
-        // Auge
-        enemy.graphics.beginFill(0xffffff); // Weiß
-        enemy.graphics.drawCircle(enemy.size * 0.3, 0, enemy.size * 0.2);
-        enemy.graphics.endFill();
-        enemy.graphics.beginFill(0x000000); // Schwarz
-        enemy.graphics.drawCircle(enemy.size * 0.4, 0, enemy.size * 0.1);
         enemy.graphics.endFill();
     }
 
     drawTankEnemy(enemy) {
-        // Robuster Körper (Rechteckig)
-        enemy.graphics.beginFill(0x2c3e50); // Dunkelgrau/Blau
-        enemy.graphics.drawRoundedRect(-enemy.size * 0.8, -enemy.size * 0.8, enemy.size * 1.6, enemy.size * 1.6, enemy.size * 0.2);
+        // Schild
+        enemy.graphics.beginFill(0x34495e);
+        enemy.graphics.drawCircle(0, 0, enemy.size);
         enemy.graphics.endFill();
 
-        // Verstärkungsplatten
-        enemy.graphics.lineStyle(2, 0x7f8c8d); // Hellere Linie
-        enemy.graphics.moveTo(-enemy.size * 0.8, 0);
-        enemy.graphics.lineTo(enemy.size * 0.8, 0);
-        enemy.graphics.moveTo(0, -enemy.size * 0.8);
-        enemy.graphics.lineTo(0, enemy.size * 0.8);
+        // Schilddetails
+        enemy.graphics.lineStyle(3, 0x2c3e50);
+        enemy.graphics.drawCircle(0, 0, enemy.size - 3);
 
-        // Nieten
+        // Helm
         enemy.graphics.beginFill(0x7f8c8d);
-        enemy.graphics.drawCircle(-enemy.size * 0.6, -enemy.size * 0.6, 2);
-        enemy.graphics.drawCircle(enemy.size * 0.6, -enemy.size * 0.6, 2);
-        enemy.graphics.drawCircle(-enemy.size * 0.6, enemy.size * 0.6, 2);
-        enemy.graphics.drawCircle(enemy.size * 0.6, enemy.size * 0.6, 2);
+        enemy.graphics.drawCircle(0, -2, enemy.size * 0.6);
+        enemy.graphics.endFill();
+
+        // Gesichtsspalt im Helm
+        enemy.graphics.beginFill(0x000000);
+        enemy.graphics.drawRect(-enemy.size * 0.4, -5, enemy.size * 0.8, 3);
         enemy.graphics.endFill();
     }
 
     drawBossEnemy(enemy) {
-        const time = Date.now() / 400; // Slightly faster pulsation
+        const time = Date.now() / 300;
 
-        // Pulsierende Aura
-        const auraSize = enemy.size * 1.4 + Math.sin(time) * 4;
-        enemy.graphics.beginFill(0xc0392b, 0.15 + Math.abs(Math.sin(time * 0.8)) * 0.1); // Pulsierende Transparenz
-        enemy.graphics.drawCircle(0, 0, auraSize);
+        // Aura
+        enemy.graphics.beginFill(0xc0392b, 0.2);
+        enemy.graphics.drawCircle(0, 0, enemy.size * 1.5 + Math.sin(time) * 3);
         enemy.graphics.endFill();
 
-        // Körper (gezackt)
-        enemy.graphics.beginFill(0xc0392b); // Rot
-        const points = 8; // Anzahl der Zacken
-        enemy.graphics.moveTo(enemy.size, 0);
-        for (let i = 1; i <= points; i++) {
-            const angle = (i * Math.PI * 2) / points;
-            const radius = i % 2 === 0 ? enemy.size : enemy.size * 0.8; // Abwechselnd lang/kurz
-            enemy.graphics.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
-        }
-        enemy.graphics.closePath();
+        // Körper
+        enemy.graphics.beginFill(0xc0392b);
+        enemy.graphics.drawCircle(0, 0, enemy.size);
         enemy.graphics.endFill();
-
 
         // Krone
-        enemy.graphics.beginFill(0xFFD700); // Gold
-        const crownPoints = 5;
-        const crownBaseY = -enemy.size * 0.7;
-        const crownHeight = enemy.size * 0.5;
-        const crownWidth = enemy.size * 0.8;
-        enemy.graphics.moveTo(-crownWidth, crownBaseY);
-        for (let i = 0; i <= crownPoints; i++) {
-            const peakX = -crownWidth + (i * (crownWidth * 2) / crownPoints);
-            const peakY = crownBaseY - (i % 2 === 0 ? crownHeight * 0.5 : crownHeight);
-            enemy.graphics.lineTo(peakX, peakY);
-        }
-        enemy.graphics.lineTo(crownWidth, crownBaseY);
-        enemy.graphics.closePath(); // Close the crown shape at the bottom
-        enemy.graphics.endFill();
+        enemy.graphics.beginFill(0xFFD700);
+        const crownHeight = enemy.size * 0.6;
 
-        // Böses Auge (Zyklop)
-        enemy.graphics.beginFill(0xFFFFFF); // Weiß
-        enemy.graphics.drawEllipse(0, -enemy.size * 0.1, enemy.size * 0.4, enemy.size * 0.3);
-        enemy.graphics.endFill();
-        enemy.graphics.beginFill(0xFF0000); // Rot (Pupille)
-        const pupilXOffset = Math.cos(time * 1.5) * enemy.size * 0.1; // Auge bewegt sich
-        enemy.graphics.drawCircle(pupilXOffset, -enemy.size * 0.1, enemy.size * 0.15);
-        enemy.graphics.endFill();
-    }
-
-    drawImmuneEnemy(enemy) {
-        const time = Date.now() / 500; // Slower rotation/pulse
-
-        // Körper (Sechseck)
-        enemy.graphics.beginFill(0x8e44ad); // Dunkleres Lila
-        const sides = 6;
-        enemy.graphics.moveTo(enemy.size, 0);
-        for (let i = 1; i <= sides; i++) {
-            const angle = (i * Math.PI * 2) / sides;
-            enemy.graphics.lineTo(Math.cos(angle) * enemy.size, Math.sin(angle) * enemy.size);
-        }
+        enemy.graphics.moveTo(-enemy.size * 0.6, -enemy.size * 0.5);
+        enemy.graphics.lineTo(-enemy.size * 0.6, -enemy.size * 0.5 - crownHeight * 0.6);
+        enemy.graphics.lineTo(-enemy.size * 0.4, -enemy.size * 0.5 - crownHeight * 0.3);
+        enemy.graphics.lineTo(-enemy.size * 0.2, -enemy.size * 0.5 - crownHeight * 0.8);
+        enemy.graphics.lineTo(0, -enemy.size * 0.5 - crownHeight * 0.4);
+        enemy.graphics.lineTo(enemy.size * 0.2, -enemy.size * 0.5 - crownHeight * 0.8);
+        enemy.graphics.lineTo(enemy.size * 0.4, -enemy.size * 0.5 - crownHeight * 0.3);
+        enemy.graphics.lineTo(enemy.size * 0.6, -enemy.size * 0.5 - crownHeight * 0.6);
+        enemy.graphics.lineTo(enemy.size * 0.6, -enemy.size * 0.5);
         enemy.graphics.closePath();
         enemy.graphics.endFill();
 
-        // Magischer Kern (pulsierend)
-        const coreSize = enemy.size * 0.4 + Math.sin(time) * 2;
-        enemy.graphics.beginFill(0xffffff, 0.7 + Math.sin(time * 1.2) * 0.2); // Pulsierende Helligkeit
-        enemy.graphics.drawCircle(0, 0, coreSize);
+        // Gesicht
+        enemy.graphics.beginFill(0x7d241e);
+        enemy.graphics.drawCircle(0, 0, enemy.size * 0.6);
         enemy.graphics.endFill();
 
-        // Rotierende Runen/Symbole
-        enemy.graphics.lineStyle(1.5, 0xffffff, 0.6);
-        const runeRadius = enemy.size * 0.7;
-        const runeCount = 3;
-        for (let i = 0; i < runeCount; i++) {
-            const angle = time + (i * Math.PI * 2 / runeCount);
-            const runeX = Math.cos(angle) * runeRadius;
-            const runeY = Math.sin(angle) * runeRadius;
-            // Einfaches Kreuz-Symbol als Rune
-            enemy.graphics.moveTo(runeX - 3, runeY);
-            enemy.graphics.lineTo(runeX + 3, runeY);
-            enemy.graphics.moveTo(runeX, runeY - 3);
-            enemy.graphics.lineTo(runeX, runeY + 3);
+        // Böse Augen
+        enemy.graphics.beginFill(0xFFFFFF);
+        enemy.graphics.drawCircle(-enemy.size * 0.25, -enemy.size * 0.1, 4);
+        enemy.graphics.drawCircle(enemy.size * 0.25, -enemy.size * 0.1, 4);
+        enemy.graphics.endFill();
+
+        enemy.graphics.beginFill(0xFF0000);
+        enemy.graphics.drawCircle(-enemy.size * 0.25, -enemy.size * 0.1, 2);
+        enemy.graphics.drawCircle(enemy.size * 0.25, -enemy.size * 0.1, 2);
+        enemy.graphics.endFill();
+    }
+
+    // Neuer Gegnertyp: Immun gegen Verlangsamung
+    drawImmuneEnemy(enemy) {
+        const time = Date.now() / 400;
+
+        // Pulsierender Schutzschild (leichter violetter Schein)
+        enemy.graphics.beginFill(0x8e44ad, 0.2);
+        enemy.graphics.drawCircle(0, 0, enemy.size * 1.2 + Math.sin(time) * 2);
+        enemy.graphics.endFill();
+
+        // Körper
+        enemy.graphics.beginFill(0x8e44ad);
+        enemy.graphics.drawCircle(0, 0, enemy.size);
+        enemy.graphics.endFill();
+
+        // Kapuze
+        enemy.graphics.beginFill(0x5b2c6f);
+        enemy.graphics.arc(0, 0, enemy.size * 0.8, -Math.PI, 0);
+        enemy.graphics.lineTo(0, -enemy.size * 0.8);
+        enemy.graphics.closePath();
+        enemy.graphics.endFill();
+
+        // Gesicht (dunkel, nur Augen sichtbar)
+        enemy.graphics.beginFill(0x2c3e50);
+        enemy.graphics.drawCircle(0, 0, enemy.size * 0.5);
+        enemy.graphics.endFill();
+
+        // Leuchtende Augen
+        enemy.graphics.beginFill(0xFFFFFF, 0.8);
+        enemy.graphics.drawCircle(-enemy.size * 0.2, -enemy.size * 0.1, 3);
+        enemy.graphics.drawCircle(enemy.size * 0.2, -enemy.size * 0.1, 3);
+        enemy.graphics.endFill();
+
+        // Magisches Symbol (rotierend)
+        enemy.graphics.lineStyle(1, 0xffffff, 0.7);
+        const symbolRadius = enemy.size * 0.3;
+        const pointCount = 5;
+
+        for (let i = 0; i < pointCount; i++) {
+            const angle1 = time + (i * Math.PI * 2 / pointCount);
+            const angle2 = time + ((i + 2) % pointCount * Math.PI * 2 / pointCount);
+
+            enemy.graphics.moveTo(
+                Math.cos(angle1) * symbolRadius,
+                Math.sin(angle1) * symbolRadius
+            );
+            enemy.graphics.lineTo(
+                Math.cos(angle2) * symbolRadius,
+                Math.sin(angle2) * symbolRadius
+            );
         }
-
-        // Keine Kapuze/Gesicht, Fokus auf magische Natur
     }
 
+    // Neuer Gegnertyp: Regeneriert Gesundheit
     drawRegenEnemy(enemy) {
-        const time = Date.now() / 600; // Gentle pulse
+        const time = Date.now() / 500;
 
-        // Pulsierender Heiligenschein
-        const haloSize = enemy.size * 1.2 + Math.sin(time) * 2;
-        enemy.graphics.beginFill(0x27ae60, 0.1 + Math.abs(Math.sin(time * 0.8)) * 0.1); // Sanfter Puls
-        enemy.graphics.drawCircle(0, 0, haloSize);
+        // Pulsierender grüner Heilungsaura
+        enemy.graphics.beginFill(0x27ae60, 0.15);
+        enemy.graphics.drawCircle(0, 0, enemy.size * 1.3 + Math.sin(time) * 3);
         enemy.graphics.endFill();
 
-        // Körper (Tropfenform)
-        enemy.graphics.beginFill(0x27ae60); // Grün
-        enemy.graphics.drawEllipse(0, 0, enemy.size * 0.8, enemy.size); // Vertikale Ellipse
+        // Körper
+        enemy.graphics.beginFill(0x27ae60);
+        enemy.graphics.drawCircle(0, 0, enemy.size);
         enemy.graphics.endFill();
 
-        // Gesicht (freundlich)
-        enemy.graphics.beginFill(0xf5d7b5); // Hautfarbe
-        enemy.graphics.drawCircle(0, -enemy.size * 0.3, enemy.size * 0.4); // Positioniert im oberen Teil
+        // Gewand
+        enemy.graphics.beginFill(0x229954);
+        enemy.graphics.arc(0, 0, enemy.size * 0.9, Math.PI, Math.PI * 2);
+        enemy.graphics.lineTo(0, enemy.size * 0.5);
+        enemy.graphics.closePath();
         enemy.graphics.endFill();
 
-        // Augen (geschlossen/lächelnd)
-        enemy.graphics.lineStyle(1, 0x333333);
-        enemy.graphics.arc(-enemy.size * 0.15, -enemy.size * 0.35, enemy.size * 0.1, Math.PI * 0.2, Math.PI * 0.8); // Linkes Auge Bogen
-        enemy.graphics.arc(enemy.size * 0.15, -enemy.size * 0.35, enemy.size * 0.1, Math.PI * 0.2, Math.PI * 0.8);  // Rechtes Auge Bogen
+        // Gesicht
+        enemy.graphics.beginFill(0xf5d7b5);
+        enemy.graphics.drawCircle(0, -enemy.size * 0.2, enemy.size * 0.45);
+        enemy.graphics.endFill();
 
-        // Heilungssymbol (Herz oder einfaches Kreuz)
-        enemy.graphics.beginFill(0xffffff, 0.9); // Weißes Symbol
-        enemy.graphics.drawCircle(0, enemy.size * 0.2, enemy.size * 0.3); // Kleiner Kreis unten
-        // Optional: Kreuz darauf
-        enemy.graphics.lineStyle(1.5, 0x27ae60); // Grüne Linien im Kreis
-        enemy.graphics.moveTo(0, enemy.size * 0.2 - enemy.size * 0.2);
-        enemy.graphics.lineTo(0, enemy.size * 0.2 + enemy.size * 0.2);
-        enemy.graphics.moveTo(-enemy.size * 0.2, enemy.size * 0.2);
-        enemy.graphics.lineTo(enemy.size * 0.2, enemy.size * 0.2);
-        enemy.graphics.endFill(); // End fill for the circle
+        // Heiliges Symbol (Kreuz)
+        enemy.graphics.lineStyle(2, 0xffffff, 0.8);
+        enemy.graphics.moveTo(0, -enemy.size * 0.6);
+        enemy.graphics.lineTo(0, -enemy.size * 0.2);
+        enemy.graphics.moveTo(-enemy.size * 0.2, -enemy.size * 0.4);
+        enemy.graphics.lineTo(enemy.size * 0.2, -enemy.size * 0.4);
+
+        // Heilungspartikel
+        if (Math.sin(time * 3) > 0.7) {
+            enemy.graphics.beginFill(0x2ecc71, 0.7);
+            for (let i = 0; i < 3; i++) {
+                const particleAngle = time * 2 + i * Math.PI * 2 / 3;
+                const dist = enemy.size * 0.8;
+                enemy.graphics.drawCircle(
+                    Math.cos(particleAngle) * dist,
+                    Math.sin(particleAngle) * dist,
+                    2
+                );
+            }
+            enemy.graphics.endFill();
+        }
     }
-} // End of EnemyManager Class
+}
