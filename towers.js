@@ -4,7 +4,7 @@ const towerTypes = {
         name: 'Basis Turm',
         description: 'Ein grundlegender Verteidigungsturm mit ausgeglichenem Schaden und Reichweite.',
         cost: 25,
-        damage: 10,
+        damage: 50,
         range: 100,
         fireRate: 1000, // ms
         color: 0x3498db,
@@ -18,7 +18,7 @@ const towerTypes = {
                 description: 'Schießt zwei Projektile gleichzeitig',
                 cost: 50,
                 multishot: 2,
-                damage: 10
+                damage: 120
             },
             {
                 name: 'Schnellfeuerschuss',
@@ -31,7 +31,7 @@ const towerTypes = {
                 description: 'Schießt drei Projektile mit erhöhtem Schaden',
                 cost: 150,
                 multishot: 3,
-                damage: 15
+                damage: 150
             }
         ]
     },

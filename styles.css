@@ -138,6 +138,12 @@ canvas {
     font-family: 'MedievalSharp', cursive;
     font-size: 16px;
     transition: all 0.2s;
+    /* Feste Breite und Höhe hinzufügen, um Ruckeln zu vermeiden */
+    width: 150px;
+    height: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .start-button:hover {
@@ -379,10 +385,6 @@ canvas {
     top: -4px;
     right: 20%;
 }
-
-
-
-
 
 /* Radial Tower Menu */
 .radial-menu {
