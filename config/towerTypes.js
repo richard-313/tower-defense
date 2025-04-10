@@ -1,7 +1,7 @@
 const towerTypes = {
     basic: {
         name: 'Basis Turm',
-        description: 'Ein grundlegender Verteidigungsturm mit ausgeglichenem Schaden und Reichweite.',
+        // description: 'Ein grundlegender Verteidigungsturm mit ausgeglichenem Schaden und Reichweite.',
         cost: 25,
         damage: 10,
         range: 100,
@@ -14,29 +14,71 @@ const towerTypes = {
         upgrades: [
             {
                 name: 'Doppelschuss',
-                description: 'Schießt zwei Projektile gleichzeitig',
+                // description: 'Schießt zwei Projektile gleichzeitig',
                 cost: 50,
                 multishot: 2,
                 damage: 10
             },
             {
                 name: 'Schnellfeuerschuss',
-                description: 'Verdoppelte Feuerrate',
+                // description: 'Verdoppelte Feuerrate',
                 cost: 100,
                 fireRateMultiplier: 0.5
             },
             {
                 name: 'Assault Cannon',
-                description: 'Schießt drei Projektile mit erhöhtem Schaden',
+                // description: 'Schießt drei Projektile mit erhöhtem Schaden',
                 cost: 150,
                 multishot: 3,
                 damage: 15
             }
         ]
     },
+    lightning: {
+        name: 'Blitz Turm',
+        // description: 'Feuert Blitze ab, die auf nahe Gegner überspringen können.',
+        cost: 60,
+        damage: 8,         // Schaden pro Blitzschlag
+        range: 140,
+        fireRate: 600,     // Schnelle Feuerrate
+        color: 0xf1c40f,   // Gelb/Gold als Basis
+        projectileColor: 0xFFFFFF, // Weißer Blitz
+        projectileSize: 0, // Nicht relevant
+        projectileSpeed: 0, // Nicht relevant
+        effect: 'chainLightning',
+        chainCount: 1,     // Startet mit einem Ziel
+        chainRange: 60,    // Reichweite für den Sprung zum nächsten Ziel
+        sellFactor: 0.7,
+        upgrades: [
+            {
+                name: 'Kettenblitz',
+                // description: 'Blitz springt auf einen zweiten Gegner über.',
+                cost: 80,
+                chainCount: 2,
+                damage: 9, // Leichte Schadenserhöhung
+            },
+            {
+                name: 'Dreifachblitz',
+                // description: 'Blitz springt auf bis zu drei Gegner über.',
+                cost: 140,
+                chainCount: 3,
+                damage: 10,
+                chainRange: 70, // Leicht erhöhte Sprungreichweite
+            },
+            {
+                name: 'Gewittersturm',
+                // description: 'Blitz trifft bis zu fünf Gegner mit erhöhter Kraft.',
+                cost: 220,
+                chainCount: 5,
+                damage: 12,
+                range: 150, // Leicht erhöhte Grundreichweite
+                chainRange: 80,
+            }
+        ]
+    },
     sniper: {
         name: 'Sniper Turm',
-        description: 'Hoher Schaden über große Entfernungen, aber langsame Feuerrate.',
+        // description: 'Hoher Schaden über große Entfernungen, aber langsame Feuerrate.',
         cost: 50,
         damage: 30,
         range: 200,
@@ -49,20 +91,20 @@ const towerTypes = {
         upgrades: [
             {
                 name: 'Verstärkter Schuss',
-                description: 'Erhöhter Schaden pro Schuss',
+                // description: 'Erhöhter Schaden pro Schuss',
                 cost: 75,
                 damage: 60
             },
             {
                 name: 'Präzisionsverbesserung',
-                description: 'Erhöhte Reichweite und Schaden',
+                // description: 'Erhöhte Reichweite und Schaden',
                 cost: 125,
                 range: 250,
                 damage: 80
             },
             {
                 name: 'Ultra-Sniper',
-                description: 'Durchdringende Schüsse, die mehrere Gegner treffen',
+                // description: 'Durchdringende Schüsse, die mehrere Gegner treffen',
                 cost: 200,
                 pierce: 3,
                 damage: 100
@@ -71,7 +113,7 @@ const towerTypes = {
     },
     slow: {
         name: 'Frost Turm',
-        description: 'Verlangsamt Gegner und fügt leichten Schaden zu.',
+        // description: 'Verlangsamt Gegner und fügt leichten Schaden zu.',
         cost: 40,
         damage: 5,
         range: 80,
@@ -87,19 +129,19 @@ const towerTypes = {
         upgrades: [
             {
                 name: 'Stärkere Verlangsamung',
-                description: 'Gegner werden stärker verlangsamt',
+                // description: 'Gegner werden stärker verlangsamt',
                 cost: 60,
                 slowFactor: 0.3
             },
             {
                 name: 'Verlängerte Verlangsamung',
-                description: 'Effekt hält länger an',
+                // description: 'Effekt hält länger an',
                 cost: 90,
                 slowDuration: 4000
             },
             {
                 name: 'Frost-Turm',
-                description: 'Fast komplette Verlangsamung und erhöhter Schaden',
+                // description: 'Fast komplette Verlangsamung und erhöhter Schaden',
                 cost: 130,
                 slowFactor: 0.2,
                 slowDuration: 5000,
@@ -109,7 +151,7 @@ const towerTypes = {
     },
     bomb: {
         name: 'Bomben Turm',
-        description: 'Verursacht Flächenschaden an allen Gegnern im Explosionsradius.',
+        // description: 'Verursacht Flächenschaden an allen Gegnern im Explosionsradius.',
         cost: 75,
         damage: 15,
         range: 120,
@@ -124,20 +166,20 @@ const towerTypes = {
         upgrades: [
             {
                 name: 'Erweiterter Radius',
-                description: 'Größerer Explosionsradius',
+                // description: 'Größerer Explosionsradius',
                 cost: 80,
                 splashRadius: 90
             },
             {
                 name: 'Schwere Munition',
-                description: 'Erhöhter Schaden und Radius',
+                // description: 'Erhöhter Schaden und Radius',
                 cost: 120,
                 damage: 25,
                 splashRadius: 110
             },
             {
                 name: 'Nuklear-Turm',
-                description: 'Maximaler Radius und Schaden',
+                // description: 'Maximaler Radius und Schaden',
                 cost: 180,
                 damage: 40,
                 splashRadius: 150

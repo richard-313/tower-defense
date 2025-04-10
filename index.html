@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="styles.css">
     <!-- PixiJS einbinden -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    <!-- Globale Hilfsfunktionen (z.B. drawStar) -->
+    <script src="utils.js"></script> <!-- Annahme: Eine Datei für globale Helfer -->
 </head>
 
 <body>
@@ -25,29 +27,34 @@
                 <div>Welle: <span id="wave">0</span></div>
             </div>
             <div class="wave-timer">
-                <span id="wave-countdown">Nächste Welle in: <span id="countdown">Bereit</span></span>
+                <span id="wave-countdown">Bereit</span> <!-- Vereinfacht -->
                 <button id="startWave" class="start-button">Welle starten</button>
             </div>
         </div>
-        <!-- PixiJS-Container anstelle von Canvas -->
+        <!-- PixiJS-Container -->
         <div id="gameContainer" class="game-canvas-container"></div>
 
         <div id="upgradePanel" class="upgrade-panel">
             <div id="towerInfo" class="tower-info"></div>
-            <div class="upgrade-path">
-                <div id="currentLevel" class="upgrade-progress"></div>
+            <div id="currentLevel" class="upgrade-progress">
+                <!-- Inhalt wird von JS generiert -->
             </div>
             <div class="upgrade-buttons">
-                <button id="upgradeDirectly" class="upgrade-button">Direkt upgraden auf Level <span
-                        id="targetLevel">1</span> (<span id="upgradeCost">0</span> Gold)</button>
-                <button id="sellTower" class="upgrade-button sell-button">Turm verkaufen (<span id="sellValue">0</span>
-                    Gold)</button>
+                <!-- Spans sind noch da, aber Text wird dynamisch gesetzt -->
+                <button id="upgradeDirectly" class="upgrade-button">
+                    Upgrade <span id="targetLevel" style="display: none;"></span>
+                    <span id="upgradeCost" style="display: none;"></span>
+                </button>
+                <button id="sellTower" class="upgrade-button sell-button">
+                    Verkaufen (<span id="sellValue">0</span> G)
+                </button>
                 <button id="closeUpgrade" class="upgrade-button close-button">Schließen</button>
             </div>
         </div>
 
         <!-- Radiales Turmauswahl-Menü -->
         <div id="radialTowerMenu" class="radial-menu">
+            <!-- Optionen wie zuvor -->
             <div id="radialBasicTower" class="tower-option-radial" data-type="basic" data-cost="25">
                 <div class="tower-icon basic-tower"></div>
             </div>
@@ -60,22 +67,33 @@
             <div id="radialBombTower" class="tower-option-radial" data-type="bomb" data-cost="75">
                 <div class="tower-icon bomb-tower"></div>
             </div>
-            <!-- Füge diesen Code zum radialTowerMenu in index.html hinzu -->
+            <div id="radialLightningTower" class="tower-option-radial" data-type="lightning" data-cost="60">
+                <div class="tower-icon lightning-tower"></div>
+            </div>
             <div id="radialCancelButton" class="tower-option-cancel">
                 <div class="cancel-icon">✕</div>
             </div>
         </div>
     </div>
 
+    <!-- Globale Configs -->
     <script src="config/enemyTypes.js"></script>
     <script src="config/mapConfig.js"></script>
     <script src="config/mapDesigns.js"></script>
     <script src="config/towerTypes.js"></script>
 
-    <!-- Scripts -->
+    <!-- Grafik-Skripte (Gegner) -->
+    <script src="graphics/enemies/drawNormal.js"></script>
+    <script src="graphics/enemies/drawFast.js"></script>
+    <script src="graphics/enemies/drawTank.js"></script>
+    <script src="graphics/enemies/drawBoss.js"></script>
+    <script src="graphics/enemies/drawImmune.js"></script>
+    <script src="graphics/enemies/drawRegen.js"></script>
+
+    <!-- Kern-Skripte -->
     <script src="map.js"></script>
     <script src="enemies.js"></script>
-    <script src="towers.js"></script>
+    <script src="towers.js"></script> <!-- Wichtig: Enthält jetzt globale drawStar Funktion -->
     <script src="ui.js"></script>
     <script src="game.js"></script>
 </body>

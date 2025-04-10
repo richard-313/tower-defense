@@ -1,3 +1,5 @@
+// ui.js
+
 // UI Management and User Interactions
 class GameUI {
     constructor(app, gameMap, towerManager, enemyManager) {
@@ -19,16 +21,15 @@ class GameUI {
         // Mausposition-Tracking
         this.mouseX = null;
         this.mouseY = null;
+        this.mouseX_unscaled = null; // Für UI-Element-Platzierung
+        this.mouseY_unscaled = null;
 
         // UI-Elemente
         this.livesElement = document.getElementById('lives');
         this.goldElement = document.getElementById('gold');
         this.waveElement = document.getElementById('wave');
         this.startWaveButton = document.getElementById('startWave');
-        this.countdownElement = document.getElementById('countdown');
-
-        // Neue UI-Elemente für Multiple-Wave Buttons
-        this.createMultiWaveButtons();
+        this.countdownElement = document.getElementById('wave-countdown'); // ID korrigiert
 
         // Radial-Menü-Element
         this.radialMenu = document.getElementById('radialTowerMenu');
@@ -39,14 +40,13 @@ class GameUI {
             basic: document.getElementById('radialBasicTower'),
             sniper: document.getElementById('radialSniperTower'),
             slow: document.getElementById('radialSlowTower'),
-            bomb: document.getElementById('radialBombTower')
+            bomb: document.getElementById('radialBombTower'),
+            lightning: document.getElementById('radialLightningTower')
         };
 
-        // Aktualisiere die Kosten in den data-cost Attributen (falls sich towerTypes ändert)
-        this.radialTowerOptions.basic.setAttribute('data-cost', towerTypes.basic.cost);
-        this.radialTowerOptions.sniper.setAttribute('data-cost', towerTypes.sniper.cost);
-        this.radialTowerOptions.slow.setAttribute('data-cost', towerTypes.slow.cost);
-        this.radialTowerOptions.bomb.setAttribute('data-cost', towerTypes.bomb.cost);
+        // Aktualisiere die Kosten in den data-cost Attributen
+        this.updateTowerCostsInMenu();
+
 
         // Karten-Buttons
         this.mapButtons = {
@@ -58,78 +58,45 @@ class GameUI {
         // Upgrade-Panel-Elemente
         this.upgradePanel = document.getElementById('upgradePanel');
         this.towerInfo = document.getElementById('towerInfo');
-        this.upgradeProgressDiv = document.getElementById('currentLevel');
+        this.upgradeProgressDiv = document.getElementById('currentLevel'); // Container für den Pfad
         this.upgradeDirectlyButton = document.getElementById('upgradeDirectly');
-        this.targetLevelSpan = document.getElementById('targetLevel');
-        this.upgradeCostSpan = document.getElementById('upgradeCost');
+        this.targetLevelSpan = this.upgradeDirectlyButton.querySelector('#targetLevel'); // Im Button
+        this.upgradeCostSpan = this.upgradeDirectlyButton.querySelector('#upgradeCost'); // Im Button
         this.sellTowerButton = document.getElementById('sellTower');
-        this.sellValueSpan = document.getElementById('sellValue');
+        this.sellValueSpan = this.sellTowerButton.querySelector('#sellValue'); // Im Button
         this.closeUpgradeButton = document.getElementById('closeUpgrade');
 
         this.initEventListeners();
         this.updateUI();
     }
 
-    // Neue Methode zum Erstellen der Multiple-Wave-Buttons
-    createMultiWaveButtons() {
-        // Container für die Buttons erstellen
-        const waveButtonsContainer = document.createElement('div');
-        waveButtonsContainer.className = 'multi-wave-buttons';
-
-        // Styling für das Container-Element
-        waveButtonsContainer.style.display = 'flex';
-        waveButtonsContainer.style.justifyContent = 'center';
-        waveButtonsContainer.style.gap = '5px';
-        waveButtonsContainer.style.marginTop = '5px';
-
-        // Buttons erstellen
-        this.waveButton2x = document.createElement('button');
-        this.waveButton2x.className = 'wave-button';
-        this.waveButton2x.textContent = '+2 Wellen';
-        this.waveButton2x.style.padding = '5px 10px';
-        this.waveButton2x.style.backgroundColor = '#a24a1c';
-        this.waveButton2x.style.color = '#f9e9c3';
-        this.waveButton2x.style.border = '2px solid #8B5A2B';
-        this.waveButton2x.style.borderRadius = '4px';
-        this.waveButton2x.style.fontFamily = "'MedievalSharp', cursive";
-        this.waveButton2x.style.fontSize = '14px';
-        this.waveButton2x.style.cursor = 'pointer';
-
-        this.waveButton3x = document.createElement('button');
-        this.waveButton3x.className = 'wave-button';
-        this.waveButton3x.textContent = '+3 Wellen';
-        this.waveButton3x.style.padding = '5px 10px';
-        this.waveButton3x.style.backgroundColor = '#8e3218';
-        this.waveButton3x.style.color = '#f9e9c3';
-        this.waveButton3x.style.border = '2px solid #8B5A2B';
-        this.waveButton3x.style.borderRadius = '4px';
-        this.waveButton3x.style.fontFamily = "'MedievalSharp', cursive";
-        this.waveButton3x.style.fontSize = '14px';
-        this.waveButton3x.style.cursor = 'pointer';
-
-        // Buttons zum Container hinzufügen
-        waveButtonsContainer.appendChild(this.waveButton2x);
-        waveButtonsContainer.appendChild(this.waveButton3x);
-
-        // Container zur wave-timer-div hinzufügen
-        const waveTimerDiv = document.querySelector('.wave-timer');
-        waveTimerDiv.appendChild(waveButtonsContainer);
+    // Hilfsfunktion zum Aktualisieren der Kosten im Radialmenü
+    updateTowerCostsInMenu() {
+        for (const type in this.radialTowerOptions) {
+            const element = this.radialTowerOptions[type];
+            if (element && towerTypes[type]) { // Prüfen ob Element und Typ existieren
+                element.setAttribute('data-cost', towerTypes[type].cost);
+            }
+        }
     }
 
     initEventListeners() {
         // Events für Turm-Optionen im Radialmenü
         for (const [type, element] of Object.entries(this.radialTowerOptions)) {
+            if (!element) continue;
             element.addEventListener('click', (e) => {
-                // Verhindern, dass das Klick-Event bis zum Canvas durchdringt
                 e.stopPropagation();
                 this.selectTowerFromRadial(type);
             });
         }
         // Event für den Cancel-Button
-        this.radialCancelButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.hideRadialMenu();
-        });
+        if (this.radialCancelButton) {
+            this.radialCancelButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.hideRadialMenu();
+            });
+        }
+
 
         // Kartenauswahlbuttons
         for (const [mapId, button] of Object.entries(this.mapButtons)) {
@@ -137,34 +104,50 @@ class GameUI {
         }
 
         // PixiJS-Container-Events
-        this.app.view.addEventListener('click', (e) => this.handleCanvasClick(e));
-        this.app.view.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
+        if (this.app.view) {
+            this.app.view.addEventListener('click', (e) => this.handleCanvasClick(e));
+            this.app.view.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
+            // Verhindern, dass das Kontextmenü im Canvas erscheint
+            this.app.view.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
+
 
         // Wellenkontrolle
-        this.startWaveButton.addEventListener('click', () => this.startNextWave());
-
-        // Neue Buttons für mehrere Wellen
-        this.waveButton2x.addEventListener('click', () => this.startMultipleWaves(2));
-        this.waveButton3x.addEventListener('click', () => this.startMultipleWaves(3));
+        if (this.startWaveButton) {
+            this.startWaveButton.addEventListener('click', () => this.startNextWave());
+        }
 
         // Upgrade-Panel-Steuerung
-        this.upgradeDirectlyButton.addEventListener('click', () => this.upgradeTower());
-        this.sellTowerButton.addEventListener('click', () => this.sellTower());
-        this.closeUpgradeButton.addEventListener('click', () => this.closeUpgradePanel());
+        if (this.upgradeDirectlyButton) {
+            this.upgradeDirectlyButton.addEventListener('click', () => this.upgradeTower());
+        }
+        if (this.sellTowerButton) {
+            this.sellTowerButton.addEventListener('click', () => this.sellTower());
+        }
+        if (this.closeUpgradeButton) {
+            this.closeUpgradeButton.addEventListener('click', () => this.closeUpgradePanel());
+        }
 
-        // Event-Listener, um Radialmenü zu schließen, wenn irgendwo anders geklickt wird
+
+        // Event-Listener, um Menüs zu schließen, wenn außerhalb geklickt wird
         document.addEventListener('click', (e) => {
-            // Wenn weder auf das Radialmenü noch auf den Canvas geklickt wurde
-            if (this.radialMenu.style.display === 'block' && !this.radialMenu.contains(e.target) && e.target !== this.app.view) {
+            // Schließe Radialmenü
+            if (this.radialMenu && this.radialMenu.style.display === 'block' && !this.radialMenu.contains(e.target) && e.target !== this.app.view) {
                 this.hideRadialMenu();
+            }
+            // Schließe Upgrade Panel (wenn nicht auf Turm oder Panel selbst geklickt)
+            const isClickOnTower = this.towerManager.getTowerAt(this.mouseX, this.mouseY); // Prüfe an aktueller Mausposition
+            if (this.upgradePanel && this.upgradePanel.style.display === 'block' && !this.upgradePanel.contains(e.target) && e.target !== this.app.view && !isClickOnTower) {
+                this.closeUpgradePanel();
             }
         });
     }
 
     changeMap(mapId) {
         // Karte nur ändern, wenn keine Feinde aktiv sind
-        if (this.enemyManager.enemies.length > 0) {
-            return; // Kann Karte während einer Welle nicht ändern
+        if (this.enemyManager.enemies.length > 0 || this.enemyManager.enemiesRemaining > 0) {
+            alert("Kann die Karte nicht während einer laufenden Welle wechseln!");
+            return;
         }
 
         // Kartenbutton-Auswahl aktualisieren
@@ -173,7 +156,7 @@ class GameUI {
         }
         this.mapButtons[mapId].classList.add('selected');
 
-        // Spielzustand zurücksetzen
+        // Spielzustand zurücksetzen (ruft auch enemyManager.resetGame)
         this.resetGame();
 
         // Neue Karte setzen
@@ -182,51 +165,71 @@ class GameUI {
         // Manager mit neuer Karte aktualisieren
         this.towerManager.updateMap(this.gameMap);
         this.enemyManager.updatePath(this.gameMap.path);
+
+        // Hintergrundfarbe des Canvas anpassen
+        const bgColor = this.gameMap.currentMapDesign?.terrainColors?.empty || 0x7d934c;
+        this.app.renderer.background.color = bgColor;
+        // Und des Containers dahinter
+        const canvasContainer = document.getElementById('gameContainer')?.querySelector('.game-canvas-container');
+        if (canvasContainer) {
+            const cssColor = '#' + bgColor.toString(16).padStart(6, '0');
+            canvasContainer.style.backgroundColor = cssColor;
+        }
     }
 
     resetGame() {
         this.gold = 100;
         this.lives = 10;
-        this.enemyManager.waveNumber = 0;
 
-        // Feinde und Türme entfernen
-        this.enemyManager.enemies = [];
-        this.towerManager.towers.forEach((tower, index) => {
-            this.towerManager.removeTower(index);
-        });
+        // Wichtig: Rufe die resetGame Methode des EnemyManagers auf!
+        this.enemyManager.resetGame(); // Stoppt Intervalle, leert Gegner etc.
+
+        // Türme entfernen
+        for (let i = this.towerManager.towers.length - 1; i >= 0; i--) {
+            this.towerManager.removeTower(i);
+        }
         this.towerManager.towers = [];
+
+        // Projektile entfernen
+        for (let i = this.towerManager.projectiles.length - 1; i >= 0; i--) {
+            this.towerManager.removeProjectile(i);
+        }
         this.towerManager.projectiles = [];
 
         // UI-Zustand zurücksetzen
         this.selectedTowerForUpgrade = null;
-        this.enemyManager.cancelWaveTimer();
-        this.updateUI();
+        this.updateUI(); // Aktualisiert Gold, Leben, Welle (auf 0)
+        if (this.countdownElement) this.countdownElement.textContent = 'Bereit';
 
         // Menüs schließen
         this.hideRadialMenu();
         this.closeUpgradePanel();
+
+        // Start-Button wieder aktivieren (falls deaktiviert war)
+        if (this.startWaveButton) this.startWaveButton.disabled = false;
     }
 
-    // Neue Methode zum Anzeigen des Radialmenüs
-    // Diese Methode muss in der ui.js-Datei ersetzt werden
-    // Neue Methode zum Anzeigen des Radialmenüs
+
     showRadialMenu(x, y) {
-        // Klick-Position für die spätere Platzierung speichern
+        if (!this.radialMenu) return; // Sicherheitscheck
+
+        // Klick-Position für die spätere Platzierung speichern (Spielkoordinaten)
         this.clickX = x;
         this.clickY = y;
 
-        // Kachelkoordinaten berechnen
-        const tileX = Math.floor(x / this.gameMap.tileSize);
-        const tileY = Math.floor(y / this.gameMap.tileSize);
-        this.selectedTileX = tileX;
-        this.selectedTileY = tileY;
+        // Kachelkoordinaten berechnen (nicht mehr direkt verwendet, aber ggf. nützlich)
+        // const tileX = Math.floor(x / this.gameMap.tileSize);
+        // const tileY = Math.floor(y / this.gameMap.tileSize);
+        // this.selectedTileX = tileX;
+        // this.selectedTileY = tileY;
 
-        // Mausposition im Browserfenster berechnen
+        // Globale Fensterkoordinaten berechnen
         const rect = this.app.view.getBoundingClientRect();
-        const globalX = x + rect.left;
-        const globalY = y + rect.top;
+        const globalX = x * this.app.stage.scale.x + rect.left + this.app.stage.x;
+        const globalY = y * this.app.stage.scale.y + rect.top + this.app.stage.y;
 
-        // Radialmenü genau an die Mausposition setzen (nicht versetzt)
+
+        // Radialmenü genau an die Mausposition setzen
         this.radialMenu.style.left = `${globalX}px`;
         this.radialMenu.style.top = `${globalY}px`;
         this.radialMenu.style.display = 'block';
@@ -235,18 +238,17 @@ class GameUI {
         this.updateRadialMenuAvailability();
     }
 
-    // Radialmenü ausblenden
     hideRadialMenu() {
+        if (!this.radialMenu) return;
         this.radialMenu.style.display = 'none';
-        this.selectedTileX = null;
-        this.selectedTileY = null;
         this.clickX = null;
         this.clickY = null;
     }
 
-    // Verfügbare Türme im Radialmenü aktualisieren
     updateRadialMenuAvailability() {
+        if (!this.radialMenu || this.radialMenu.style.display === 'none') return; // Nur wenn Menü sichtbar
         for (const [type, element] of Object.entries(this.radialTowerOptions)) {
+            if (!element || !towerTypes[type]) continue;
             if (this.gold < towerTypes[type].cost) {
                 element.classList.add('disabled');
             } else {
@@ -255,69 +257,91 @@ class GameUI {
         }
     }
 
-    // Turmauswahl aus dem Radialmenü
     selectTowerFromRadial(type) {
-        // Prüfen, ob genug Gold vorhanden ist
+        if (!towerTypes[type]) return;
         if (this.gold < towerTypes[type].cost) {
-            return; // Nicht genug Gold
+            console.log("Nicht genug Gold!");
+            this.hideRadialMenu();
+            return;
         }
 
-        // Turm an der Klickposition platzieren
-        if (this.placeTower(type, this.clickX, this.clickY)) {
-            // Turm wurde erfolgreich platziert
-            this.gold -= towerTypes[type].cost;
-            this.updateUI();
+        if (this.clickX !== null && this.clickY !== null) {
+            if (this.placeTower(type, this.clickX, this.clickY)) {
+                this.gold -= towerTypes[type].cost;
+                this.updateUI();
+                this.hideRadialMenu();
+            } else {
+                // Platzierung fehlgeschlagen (z.B. belegt)
+                this.hideRadialMenu();
+                // console.log("Platzierung nicht möglich.");
+            }
+        } else {
+            console.error("Klickposition für Turmplatzierung nicht gespeichert.");
             this.hideRadialMenu();
         }
     }
 
     handleCanvasClick(event) {
+        if (!this.app.view) return;
+
         const rect = this.app.view.getBoundingClientRect();
-        const clickX = event.clientX - rect.left;
-        const clickY = event.clientY - rect.top;
+        const clickX = (event.clientX - rect.left - this.app.stage.x) / this.app.stage.scale.x;
+        const clickY = (event.clientY - rect.top - this.app.stage.y) / this.app.stage.scale.y;
 
         // Prüfen, ob auf einen bestehenden Turm geklickt wurde
         const towerResult = this.towerManager.getTowerAt(clickX, clickY);
         if (towerResult) {
             // Upgrade-Panel anzeigen
-            this.showUpgradePanel(towerResult.tower, towerResult.index, clickX, clickY);
-
-            // Sicherstellen, dass das Radialmenü geschlossen wird
-            this.hideRadialMenu();
+            const panelX = event.clientX - rect.left; // Unskalierte Position für Panel
+            const panelY = event.clientY - rect.top;
+            this.showUpgradePanel(towerResult.tower, towerResult.index, panelX, panelY);
+            this.hideRadialMenu(); // Radialmenü schließen
             return;
         }
 
-        // Prüfen, ob die Kachel für einen Turm geeignet ist
+        // Prüfen, ob die Kachel für einen Turm geeignet ist (nicht Pfad)
         if (!this.gameMap.isTileOccupied(clickX, clickY)) {
-            // Radialmenü anzeigen
-            this.showRadialMenu(clickX, clickY);
-
-            // Upgrade-Panel schließen, wenn offen
+            this.showRadialMenu(clickX, clickY); // Radialmenü anzeigen
+            this.closeUpgradePanel(); // Upgrade-Panel schließen
+        } else {
+            // Klick auf ungültige Stelle -> Menüs schließen
+            this.hideRadialMenu();
             this.closeUpgradePanel();
         }
     }
 
     handleCanvasMouseMove(event) {
-        const rect = this.app.view.getBoundingClientRect();
-        const mouseX = event.clientX - rect.left;
-        const mouseY = event.clientY - rect.top;
+        if (!this.app.view) return;
 
-        // Aktuelle Mausposition speichern
+        const rect = this.app.view.getBoundingClientRect();
+        const mouseX = (event.clientX - rect.left - this.app.stage.x) / this.app.stage.scale.x;
+        const mouseY = (event.clientY - rect.top - this.app.stage.y) / this.app.stage.scale.y;
+
+        this.mouseX_unscaled = event.clientX - rect.left;
+        this.mouseY_unscaled = event.clientY - rect.top;
         this.mouseX = mouseX;
         this.mouseY = mouseY;
 
-        // Hover-Zustand für alle Türme zurücksetzen
+        // Hover-Zustand für Türme aktualisieren
+        let towerHovered = false;
         for (const tower of this.towerManager.towers) {
-            tower.hover = false;
+            if (!tower || !tower.container || tower.container._destroyed) continue;
+            const dx = tower.x - mouseX;
+            const dy = tower.y - mouseY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const hoverRadius = this.gameMap.tileSize * 0.5; // Hover-Bereich = Kachelgröße
+
+            if (distance <= hoverRadius) {
+                tower.hover = true;
+                towerHovered = true;
+            } else {
+                tower.hover = false;
+            }
         }
 
-        // Prüfen, ob über einem Turm
-        const towerResult = this.towerManager.getTowerAt(mouseX, mouseY);
-        if (towerResult) {
-            towerResult.tower.hover = true;
-        }
-
-        // Reichweitenkreise aktualisieren
+        // Reichweitenkreise nur aktualisieren, wenn sich der Hover-Status geändert hat
+        // (Optimierung, um nicht bei jeder Mausbewegung neu zu zeichnen)
+        // Dies erfordert, den vorherigen Hover-Status zu speichern, oder einfach immer updaten:
         this.towerManager.updateRangeCircles();
     }
 
@@ -325,288 +349,302 @@ class GameUI {
         return this.towerManager.addTower(type, x, y);
     }
 
-    // Methode für mehrere Wellen starten
-    startMultipleWaves(count) {
-        // Den enemyManager anweisen, mehrere Wellen zu starten
-        this.enemyManager.queueWaves(count);
-
-        // UI-Elemente aktualisieren
-        this.waveElement.textContent = this.enemyManager.waveNumber;
-        this.updateUI();
-
-        // Alle offenen Menüs schließen
-        this.hideRadialMenu();
-        this.closeUpgradePanel();
-    }
-
     startNextWave() {
-        // Nächste Welle starten
-        const waveNumber = this.enemyManager.startNextWave(() => {
-            // Dieser Callback wird aufgerufen, wenn die Welle abgeschlossen ist
+        // Nur prüfen, ob das Spiel vorbei ist
+        if (this.lives <= 0) {
+            console.log("Spiel vorbei, keine Wellen mehr starten.");
+            return;
+        }
 
-            // Nächste Welle nach Verzögerung planen
-            this.scheduleNextWave();
+        // Nächste Welle *immer* starten, wenn geklickt
+        const waveNumber = this.enemyManager.startNextWave(() => {
+            // Callback wird aufgerufen, wenn ALLE Wellen abgeschlossen sind
+            if (this.lives > 0) { // Nur planen, wenn noch Leben vorhanden
+                this.scheduleNextWave(); // Nächste Welle planen (nach Pause)
+            }
         });
 
-        // UI aktualisieren
-        this.waveElement.textContent = waveNumber;
+        // UI aktualisieren (Wellenzahl)
+        // Zeige die *neue* Wellenzahl an, die gestartet wurde
+        if (this.waveElement) this.waveElement.textContent = this.enemyManager.waveNumber;
 
-        // Start-Button soll während der laufenden Welle verfügbar bleiben
-        // damit der Spieler mehrere Wellen starten kann
-        //this.startWaveButton.disabled = true;
-
-        // Alle offenen Menüs schließen
+        // Menüs schließen
         this.hideRadialMenu();
         this.closeUpgradePanel();
     }
 
     scheduleNextWave() {
-        // Bonus-Gold für das Abschließen der Welle hinzufügen
+        // Bonus-Gold nur geben, wenn es eine *abgeschlossene* Welle gab
+        // (Da Wellen überlappen können, ist dies komplexer zu tracken. Einfacher Ansatz: Bonus bei jedem Callback)
         const waveBonus = 20 + this.enemyManager.waveNumber * 5;
         this.gold += waveBonus;
         this.updateUI();
 
-        // Nächste Welle nach Verzögerung planen (3 Sekunden)
-        const autoStartTime = 3000; // 3 Sekunden
+        // Nächste Welle nach Verzögerung planen (5 Sekunden)
+        const autoStartTime = 5000;
         this.enemyManager.scheduleNextWave(autoStartTime, () => {
-            // Welle wurde automatisch gestartet
-            this.waveElement.textContent = this.enemyManager.waveNumber;
-            // Sicherstellen, dass die UI aktualisiert wird
+            // Callback, wenn Welle automatisch gestartet wird
+            if (this.waveElement) this.waveElement.textContent = this.enemyManager.waveNumber;
             this.updateUI();
         });
 
-        // Countdown-Anzeige aktualisieren
+        // Countdown-Anzeige starten/aktualisieren
         this.updateCountdown();
     }
 
     updateCountdown() {
-        const remainingTime = this.enemyManager.getCurrentCountdown();
+        if (!this.countdownElement) return;
 
-        if (remainingTime <= 0) {
-            this.countdownElement.textContent = 'Bereit';
-            return;
+        // Flag, um Endlosschleife zu verhindern, falls Timer sofort stoppt
+        let isTicking = false;
+
+        const tick = () => {
+            // Breche ab, wenn der Timer extern gestoppt wurde ODER wenn das Spiel nicht mehr läuft
+            if (!this.enemyManager.autoStartTimer || !window.game || !window.game.running) {
+                this.countdownElement.textContent = 'Bereit';
+                isTicking = false;
+                return;
+            }
+            isTicking = true; // Setze Flag, dass wir ticken
+
+            const remainingTime = this.enemyManager.getCurrentCountdownPrecise(); // Präzise Methode
+
+            if (remainingTime <= 0) {
+                this.countdownElement.textContent = 'Bereit';
+                isTicking = false;
+                return; // Stoppe Timeout-Kette
+            }
+
+            const seconds = Math.ceil(remainingTime / 1000);
+            this.countdownElement.textContent = `${seconds}s`;
+
+            // Nächsten Tick planen, nur wenn noch nicht gestoppt
+            if (this.enemyManager.autoStartTimer) {
+                setTimeout(tick, 250); // Aktualisiere alle 250ms
+            } else {
+                this.countdownElement.textContent = 'Bereit'; // Falls Timer inzwischen gestoppt wurde
+                isTicking = false;
+            }
+        };
+
+        // Starte den ersten Tick nur, wenn nicht schon einer läuft
+        if (!isTicking) {
+            tick();
         }
-
-        // Sekunden formatieren
-        const seconds = Math.ceil(remainingTime / 1000);
-        this.countdownElement.textContent = `${seconds}s`;
-
-        // Fortfahren mit der Aktualisierung alle 500ms, bis der Countdown abgeschlossen ist
-        setTimeout(() => this.updateCountdown(), 500);
     }
 
-    showUpgradePanel(tower, towerIndex, x, y) {
+    showUpgradePanel(tower, towerIndex, panelX, panelY) {
+        if (!this.upgradePanel || !tower || tower.container._destroyed) return; // Sicherheitschecks
+
         // Aktuellen Turm für Upgrade setzen
         this.selectedTowerForUpgrade = { tower, index: towerIndex };
 
-        // Panel in der Nähe des Turms positionieren
-        this.upgradePanel.style.left = (x + 20) + 'px';
-        this.upgradePanel.style.top = (y - 100) + 'px';
+        // Panel positionieren
+        const panelWidth = this.upgradePanel.offsetWidth;
+        const panelHeight = this.upgradePanel.offsetHeight;
+        const gameContainerRect = this.app.view.getBoundingClientRect();
+        let left = panelX + 20;
+        let top = panelY - panelHeight / 2;
+        if (left + panelWidth > gameContainerRect.width) left = panelX - panelWidth - 20;
+        if (top < 0) top = 10;
+        if (top + panelHeight > gameContainerRect.height) top = gameContainerRect.height - panelHeight - 10;
+        this.upgradePanel.style.left = left + 'px';
+        this.upgradePanel.style.top = top + 'px';
         this.upgradePanel.style.display = 'block';
 
-        // Auswahl für alle Türme aufheben
-        for (const t of this.towerManager.towers) {
-            t.selected = false;
-        }
-
-        // Diesen Turm als ausgewählt markieren
+        // Auswahl visuell hervorheben
+        this.towerManager.towers.forEach(t => t.selected = false);
         tower.selected = true;
-
-        // Reichweitenkreise aktualisieren
-        this.towerManager.updateRangeCircles();
+        this.towerManager.updateRangeCircles(); // Reichweite anzeigen
 
         // Turm-Info aktualisieren
         this.updateTowerInfo();
     }
 
     updateTowerInfo() {
-        if (!this.selectedTowerForUpgrade) return;
+        if (!this.selectedTowerForUpgrade || !this.towerInfo || !this.selectedTowerForUpgrade.tower || this.selectedTowerForUpgrade.tower.container._destroyed) {
+            this.closeUpgradePanel(); // Schließen, wenn Turm ungültig ist
+            return;
+        }
+
 
         const { tower } = this.selectedTowerForUpgrade;
         const towerType = towerTypes[tower.type];
+        const maxLevel = towerType.upgrades.length;
 
-        // Grundlegende Turm-Informationen
-        let infoText = `<b>${towerType.name}</b><br>`;
-        infoText += `<i>${towerType.description}</i><br><br>`;
-        infoText += `Level: ${tower.level}/3<br>`;
-        infoText += `Schaden: ${tower.damage}<br>`;
+        // Turm-Statistiken anzeigen
+        let infoText = `<b>${towerType.name}</b>`; // Name fett
+        // infoText += `<hr>`; // Trennlinie
+        infoText += `Level: ${tower.level}/${maxLevel}<br>`;
+        infoText += `Schaden: ${tower.damage.toFixed(1)}<br>`;
         infoText += `Reichweite: ${tower.range}<br>`;
         infoText += `Feuerrate: ${(1000 / tower.fireRate).toFixed(1)}/s<br>`;
 
-        // Spezielle Eigenschaften
-        if (tower.multishot) {
-            infoText += `Mehrfachschuss: ${tower.multishot}x<br>`;
+        // Spezifische Eigenschaften
+        if (tower.multishot) infoText += `Mehrfachschuss: ${tower.multishot}x<br>`;
+        if (tower.type === 'slow' || tower.effect === 'slow') {
+            const slowFactor = tower.slowFactor ?? towerType.slowFactor;
+            const slowDuration = tower.slowDuration ?? towerType.slowDuration;
+            if (slowFactor !== undefined) infoText += `Verlangsamung: ${((1 - slowFactor) * 100).toFixed(0)}%<br>`;
+            if (slowDuration !== undefined) infoText += `Dauer: ${(slowDuration / 1000).toFixed(1)}s<br>`;
         }
-        if (tower.effect === 'slow') {
-            infoText += `Verlangsamung: ${(1 - tower.slowFactor) * 100}%<br>`;
-            infoText += `Dauer: ${tower.slowDuration / 1000}s<br>`;
+        if (tower.type === 'bomb' || tower.effect === 'splash') {
+            const splashRadius = tower.splashRadius ?? towerType.splashRadius;
+            if (splashRadius !== undefined) infoText += `Splash-Radius: ${splashRadius}<br>`;
         }
-        if (tower.effect === 'splash') {
-            infoText += `Splash-Radius: ${tower.splashRadius}<br>`;
+        if (tower.type === 'lightning' || tower.effect === 'chainLightning') {
+            const chainCount = tower.chainCount ?? towerType.chainCount;
+            const chainRange = tower.chainRange ?? towerType.chainRange;
+            if (chainCount !== undefined) infoText += `Ziele: ${chainCount + 1}<br>`;
+            if (chainRange !== undefined) infoText += `Sprungreichw.: ${chainRange}<br>`;
         }
-        if (tower.pierce) {
-            infoText += `Durchdringung: ${tower.pierce} Gegner<br>`;
-        }
+        if (tower.pierce) infoText += `Durchdringung: ${tower.pierce} Gegner<br>`;
 
         this.towerInfo.innerHTML = infoText;
 
-        // Upgrade-Pfad-Visualisierung erstellen
+        // Upgrade-Pfad-Visualisierung
         this.createUpgradePathUI();
 
-        // Ziellevel für Upgrade setzen
-        const targetLevel = Math.min(tower.level + 1, 3);
-        this.targetLevelSpan.textContent = targetLevel;
-
-        // Upgrade-Kosten berechnen und anzeigen
+        // Upgrade-Button aktualisieren
+        const targetLevel = tower.level + 1;
         let upgradeCost = 0;
+        let nextUpgradeName = 'Max Level';
 
-        if (targetLevel <= towerType.upgrades.length && targetLevel > tower.level) {
+        if (tower.level < maxLevel) {
             upgradeCost = this.towerManager.getUpgradeCost(tower, targetLevel);
-            this.upgradeDirectlyButton.disabled = this.gold < upgradeCost;
-        } else {
-            this.upgradeDirectlyButton.disabled = true;
+            nextUpgradeName = towerType.upgrades[tower.level].name || `Level ${targetLevel}`;
         }
 
-        this.upgradeCostSpan.textContent = upgradeCost;
+        if (this.upgradeDirectlyButton) {
+            // Button Text
+            let buttonText = tower.level < maxLevel ? `Upgrade: ${nextUpgradeName}` : 'Max Level';
+            this.upgradeDirectlyButton.textContent = buttonText;
 
-        // Verkaufswert setzen
-        this.sellValueSpan.textContent = tower.sellValue;
+            // Kosten anzeigen (oder ausblenden)
+            if (this.upgradeCostSpan) {
+                if (tower.level < maxLevel) {
+                    this.upgradeCostSpan.textContent = ` (${upgradeCost} G)`;
+                    this.upgradeCostSpan.style.display = 'inline';
+                } else {
+                    this.upgradeCostSpan.style.display = 'none';
+                }
+            }
+
+            // Button aktivieren/deaktivieren
+            this.upgradeDirectlyButton.disabled = (tower.level >= maxLevel) || (this.gold < upgradeCost);
+            this.upgradeDirectlyButton.removeAttribute('title'); // Sicherstellen, dass kein Tooltip angezeigt wird
+        }
+
+        // Verkaufswert aktualisieren
+        if (this.sellValueSpan) {
+            this.sellValueSpan.textContent = tower.sellValue;
+        }
     }
 
     createUpgradePathUI() {
-        if (!this.selectedTowerForUpgrade) return;
+        if (!this.selectedTowerForUpgrade || !this.upgradeProgressDiv) return;
 
         const { tower } = this.selectedTowerForUpgrade;
         const towerType = towerTypes[tower.type];
+        const maxLevel = towerType.upgrades.length;
 
         // Vorherigen Pfad löschen
         this.upgradeProgressDiv.innerHTML = '';
 
-        // Upgrade-Pfad erstellen
-        const path = document.createElement('div');
-        path.classList.add('upgrade-path');
+        const pathContainer = document.createElement('div');
+        pathContainer.classList.add('upgrade-path');
 
-        // Level-Marker hinzufügen
-        for (let i = 0; i <= 3; i++) {
-            // Level-Marker
+        for (let i = 0; i <= maxLevel; i++) {
             const marker = document.createElement('div');
             marker.classList.add('level-marker');
-            marker.textContent = i;
+            marker.textContent = i; // Zeigt Level 0 bis maxLevel an
+            if (i <= tower.level) marker.classList.add('achieved');
+            if (i === tower.level) marker.classList.add('current');
+            pathContainer.appendChild(marker);
 
-            if (i <= tower.level) {
-                marker.classList.add('achieved');
-            }
-
-            if (i === tower.level) {
-                marker.classList.add('current');
-            }
-
-            path.appendChild(marker);
-
-            // Verbindungspfad hinzufügen (außer nach dem letzten Marker)
-            if (i < 3) {
+            if (i < maxLevel) {
                 const connector = document.createElement('div');
                 connector.classList.add('level-path');
-
-                if (i < tower.level) {
-                    connector.classList.add('achieved');
-                }
-
-                path.appendChild(connector);
+                if (i < tower.level) connector.classList.add('achieved');
+                pathContainer.appendChild(connector);
             }
         }
-
-        this.upgradeProgressDiv.appendChild(path);
-
-        // Upgrade-Button basierend auf dem nächsten verfügbaren Upgrade aktualisieren
-        if (tower.level < towerType.upgrades.length) {
-            const nextUpgrade = towerType.upgrades[tower.level];
-            this.upgradeDirectlyButton.textContent = `${nextUpgrade.name} (${nextUpgrade.cost} Gold)`;
-            this.upgradeDirectlyButton.disabled = this.gold < nextUpgrade.cost;
-            this.upgradeDirectlyButton.title = nextUpgrade.description;
-        } else {
-            this.upgradeDirectlyButton.textContent = 'Maximales Level erreicht';
-            this.upgradeDirectlyButton.disabled = true;
-            this.upgradeDirectlyButton.title = '';
-        }
+        this.upgradeProgressDiv.appendChild(pathContainer);
     }
 
     upgradeTower() {
         if (!this.selectedTowerForUpgrade) return;
 
         const { tower, index } = this.selectedTowerForUpgrade;
-        const targetLevel = Math.min(tower.level + 1, 3);
+        const targetLevel = tower.level + 1;
 
-        // Upgrade durchführen
+        // Upgrade durchführen (prüft Kosten intern)
         const result = this.towerManager.upgradeTower(index, targetLevel);
 
         if (result.success) {
-            // Gold abziehen
             this.gold -= result.cost;
             this.updateUI();
-
-            // Upgrade-Panel aktualisieren
+            // Upgrade-Panel aktualisieren, um neuen Status anzuzeigen
             this.updateTowerInfo();
+        } else {
+            console.log("Upgrade fehlgeschlagen oder nicht möglich.");
+            // Optional: Fehlermeldung anzeigen
         }
     }
 
     sellTower() {
         if (!this.selectedTowerForUpgrade) return;
-
         const { index } = this.selectedTowerForUpgrade;
 
         // Turm verkaufen und Gold zurückbekommen
-        const goldRefund = this.towerManager.removeTower(index);
+        const goldRefund = this.towerManager.removeTower(index); // Entfernt Turm und gibt Wert zurück
         this.gold += goldRefund;
 
         // Panel schließen und UI aktualisieren
-        this.closeUpgradePanel();
+        this.closeUpgradePanel(); // Schließt Panel und hebt Auswahl auf
         this.updateUI();
     }
 
     closeUpgradePanel() {
+        if (!this.upgradePanel) return;
         this.upgradePanel.style.display = 'none';
 
         // Turm abwählen
         if (this.selectedTowerForUpgrade) {
-            this.selectedTowerForUpgrade.tower.selected = false;
+            // Nur abwählen, wenn der Turm noch existiert
+            if (this.selectedTowerForUpgrade.tower && this.towerManager.towers.includes(this.selectedTowerForUpgrade.tower)) {
+                this.selectedTowerForUpgrade.tower.selected = false;
+            }
             this.selectedTowerForUpgrade = null;
-
-            // Reichweitenkreise aktualisieren
-            this.towerManager.updateRangeCircles();
+            this.towerManager.updateRangeCircles(); // Reichweitenkreise ausblenden
         }
     }
 
     updateUI() {
         // Spielinfo aktualisieren
-        this.livesElement.textContent = this.lives;
-        this.goldElement.textContent = this.gold;
-        this.waveElement.textContent = this.enemyManager.waveNumber;
+        if (this.livesElement) this.livesElement.textContent = this.lives;
+        if (this.goldElement) this.goldElement.textContent = this.gold;
+        if (this.waveElement) this.waveElement.textContent = this.enemyManager.waveNumber;
 
-        // Anzeige der ausstehenden Wellen aktualisieren
-        if (this.enemyManager.pendingWaves > 0) {
-            // this.startWaveButton.textContent = `Welle starten (+${this.enemyManager.pendingWaves} ausstehend)`;
-        } else {
-            // this.startWaveButton.textContent = 'Welle starten';
+        // Start-Button Zustand
+        if (this.startWaveButton) {
+            this.startWaveButton.textContent = 'Welle starten';
+            // Button nur deaktivieren, wenn Spiel vorbei ist
+            this.startWaveButton.disabled = this.lives <= 0;
         }
 
-        // Wir halten die Buttons immer aktiv, damit der Spieler mehrere Wellen starten kann
-        // Nur bei Game Over deaktivieren wir sie
-        this.startWaveButton.disabled = this.lives <= 0;
-        this.waveButton2x.disabled = this.lives <= 0;
-        this.waveButton3x.disabled = this.lives <= 0;
+        // Verfügbarkeit im Radialmenü aktualisieren (falls offen)
+        this.updateRadialMenuAvailability();
 
-        // Falls das Radialmenü offen ist, verfügbare Türme aktualisieren
-        if (this.radialMenu.style.display === 'block') {
-            this.updateRadialMenuAvailability();
+        // Verfügbarkeit im Upgrade-Panel aktualisieren (falls offen)
+        if (this.selectedTowerForUpgrade) {
+            this.updateTowerInfo();
         }
     }
 
     enemyReachedEnd(enemy) {
         this.lives--;
         this.updateUI();
-
-        // Spielende prüfen
         if (this.lives <= 0) {
             this.gameOver();
         }
@@ -618,7 +656,62 @@ class GameUI {
     }
 
     gameOver() {
-        alert(`Game Over! Du hast Welle ${this.enemyManager.waveNumber} erreicht.`);
-        this.resetGame();
+        if (this.lives <= 0) { // Nur ausführen, wenn wirklich Game Over
+            // Spiel anhalten (Ticker stoppen etc. - wird in Game-Klasse gemacht)
+            if (window.game) window.game.running = false;
+
+            alert(`Game Over! Du hast Welle ${this.enemyManager.waveNumber} erreicht.`);
+            // UI zurücksetzen, aber Spiel nicht neustarten (außer durch Map-Wechsel)
+            this.resetGame(); // Setzt Gold/Leben zurück, leert Manager
+            // Buttons dauerhaft deaktivieren
+            if (this.startWaveButton) this.startWaveButton.disabled = true;
+        }
     }
 }
+
+// Globale Hilfsfunktionen für EnemyManager Prototyp hinzufügen
+// (Dies ist eine gängige Methode, aber nicht die sauberste. Besser wäre,
+// die UI als Abhängigkeit an den EnemyManager zu übergeben oder ein Event-System zu nutzen)
+
+// Methode zum Abrufen der präzisen Countdown-Zeit
+EnemyManager.prototype.getCurrentCountdownPrecise = function () {
+    if (!this.autoStartTimer || !this.countdownEndTime) return 0;
+    return Math.max(0, this.countdownEndTime - Date.now());
+};
+
+// Methode zum Planen der nächsten Welle mit Auto-Start
+EnemyManager.prototype.scheduleNextWave = function (delay, autoStartCallback) {
+    this.cancelWaveTimer(); // Bestehenden Timer löschen
+    this.countdownTime = delay; // Für Anzeige speichern (weniger präzise)
+    this.countdownEndTime = Date.now() + delay; // Präziser Endzeitpunkt
+
+    const update = () => {
+        // Prüfen, ob Timer noch aktiv sein soll
+        // Wichtig: Prüfe auf `this.autoStartTimer`, da es in `cancelWaveTimer` auf null gesetzt wird
+        if (!this.autoStartTimer) return;
+
+        const remaining = this.countdownEndTime - Date.now();
+        if (remaining <= 0) {
+            // Timer ist abgelaufen
+            const timerId = this.autoStartTimer; // ID merken
+            this.autoStartTimer = null; // Timer als inaktiv markieren
+            cancelAnimationFrame(timerId); // Frame Request stoppen
+
+            this.countdownEndTime = 0; // Endzeit zurücksetzen
+
+            // Automatisch starten, falls KEINE Welle läuft UND Spiel nicht vorbei
+            // Beachte: waveInProgress prüft jetzt, ob *irgendeine* Welle läuft
+            if (!this.waveInProgress && window.game?.gameUI?.lives > 0) {
+                this.startNextWave(this.onWaveComplete); // Startet neue Welle
+                if (autoStartCallback) {
+                    autoStartCallback(); // Informiert UI o.Ä.
+                }
+            }
+        } else {
+            // Timer läuft weiter - nächsten Frame anfordern
+            this.autoStartTimer = requestAnimationFrame(update);
+        }
+    };
+    // Starte den ersten Frame Request und speichere die ID
+    this.autoStartTimer = requestAnimationFrame(update);
+};
