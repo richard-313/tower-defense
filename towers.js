@@ -356,6 +356,14 @@ class TowerManager {
 
             if (removed) continue; // Nächstes Projektil
 
+            // *** NEU: Timeout Check ***
+            const MAX_PROJECTILE_LIFETIME = 3000; // 5 Sekunden maximal
+            if (projectile.timeAlive > MAX_PROJECTILE_LIFETIME && projectile.type !== 'bomb') {
+                console.log(`Projectile timed out: ${projectile.type} at ${projectile.x}, ${projectile.y}`);
+                this.removeProjectile(i);
+                continue; // Nächstes Projektil
+            }
+
             // Außerhalb der Grenzen prüfen
             if (
                 projectile.x < -50 || projectile.x > this.gameMap.width * this.gameMap.tileSize + 50 ||
@@ -408,7 +416,9 @@ class TowerManager {
             maxHeight: tower.type === 'bomb' ? (50 + Math.random() * 20) : 0,
             flightProgress: 0,
             flightDuration: tower.type === 'bomb' ? this.calculateFlightDuration(tower.x, tower.y, targetX, targetY, tower.projectileSpeed) : 0,
-            visualY: tower.y // Für Bomben-Grafik
+            visualY: tower.y, // Für Bomben-Grafik
+            // NEU: Flag für ungültiges Ziel
+            targetInvalidated: false
         };
 
         // Bombe zielt auf festen Punkt, nicht auf bewegliches Ziel
@@ -600,41 +610,58 @@ class TowerManager {
         // Prüfen ob Grafik existiert und gültig ist
         if (!projectile.graphics || projectile.graphics._destroyed) return;
 
-        // Ziel verfolgen, falls es noch existiert und im Spiel ist
-        let targetStillValid = projectile.target && projectile.target.health > 0 && projectile.target.sprite && !projectile.target.sprite._destroyed;
-        if (targetStillValid) {
-            projectile.targetX = projectile.target.x;
-            projectile.targetY = projectile.target.y;
+        // --- Zielvalidierung ---
+        // Nur prüfen, wenn das Ziel nicht bereits als ungültig markiert wurde
+        if (!projectile.targetInvalidated && projectile.target) {
+            const targetStillValid = projectile.target.health > 0 && projectile.target.sprite && !projectile.target.sprite._destroyed;
+            if (targetStillValid) {
+                // Ziel ist gültig: Aktualisiere die Zielposition
+                projectile.targetX = projectile.target.x;
+                projectile.targetY = projectile.target.y;
+            } else {
+                // Ziel wurde gerade ungültig: Markieren und Zielposition nicht mehr ändern
+                projectile.targetInvalidated = true;
+                // projectile.target = null; // Optional: Referenz löschen
+                // targetX und targetY behalten ihren letzten gültigen Wert bei
+            }
         }
-        // Wenn Ziel ungültig, fliegt es zur letzten bekannten Position weiter
+        // Wenn projectile.targetInvalidated true ist, wird targetX/Y nicht mehr aktualisiert.
 
+        // --- Bewegung ---
+        // Berechne Richtung zur letzten (bekannten oder aktuellen) Zielposition
         const dx = projectile.targetX - projectile.x;
         const dy = projectile.targetY - projectile.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        // Skalierte Geschwindigkeit für diesen Frame
+        const distanceToTargetPoint = Math.sqrt(dx * dx + dy * dy);
         const speed = projectile.speed * deltaTime * 0.06; // Annahme: 60 FPS Basis für speed-Wert
 
-        if (distance <= speed) {
-            // Ziel fast erreicht oder überschritten
+        if (distanceToTargetPoint <= speed) {
+            // Zielpunkt erreicht oder überschritten
             projectile.x = projectile.targetX;
             projectile.y = projectile.targetY;
-            // Kollision wird in checkProjectileCollisions geprüft
+
+            // WICHTIG: Wenn das Ziel ungültig war UND wir den Punkt erreicht haben,
+            // ohne etwas zu treffen (Kollision wurde noch nicht geprüft!),
+            // sollte das Projektil hier *nicht* direkt entfernt werden.
+            // Die Kollisionsprüfung und der Off-Screen-Check in der Haupt-Update-Schleife
+            // sollten das übernehmen. Wenn es hier nichts trifft, wird es entweder
+            // im nächsten Frame off-screen sein oder durch einen Timeout entfernt werden (falls implementiert).
+
         } else {
-            // Bewegen
-            const normalizedDx = dx / distance;
-            const normalizedDy = dy / distance;
+            // Zum Zielpunkt bewegen
+            const normalizedDx = dx / distanceToTargetPoint;
+            const normalizedDy = dy / distanceToTargetPoint;
             projectile.x += normalizedDx * speed;
             projectile.y += normalizedDy * speed;
         }
 
-        // Winkel für Grafik aktualisieren
+        // --- Grafik aktualisieren ---
+        // Winkel für Grafikrotation (zeigt weiterhin auf den Zielpunkt)
         projectile.angle = Math.atan2(dy, dx);
 
         // Grafikposition aktualisieren
         projectile.graphics.x = projectile.x;
         projectile.graphics.y = projectile.y;
         this.drawProjectile(projectile); // Neuzeichnen für Effekte etc.
-
 
         projectile.timeAlive += deltaTime;
     }
