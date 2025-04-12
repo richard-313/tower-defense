@@ -15,9 +15,10 @@
     --water-color: #5b87a7;
     --rock-color: #8a7f77;
     --swamp-color: #5c7358;
-    /* Radius des Kreises für Radialmenü */
+    --modal-overlay-bg: rgba(0, 0, 0, 0.6);
+    --modal-content-bg: var(--background-color);
     --radius: 60px;
-    /* Etwas kleiner für kompakteres Menü */
+    /* Radial menu size */
 }
 
 body {
@@ -28,168 +29,142 @@ body {
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23f9e9c3" /><path d="M0 0L100 100M100 0L0 100" stroke="%23d4a76a22" stroke-width="1"/></svg>');
     color: var(--text-color);
     overflow: hidden;
-    /* Verhindert Scrollbalken */
     display: flex;
-    /* Zentriert den Container vertikal/horizontal */
     justify-content: center;
     align-items: center;
+    /* Align to top for header */
     min-height: 100vh;
-    /* Nimmt die volle Höhe ein */
+    /* padding-top: 20px; */
+    /* Add some padding at the top */
 }
 
 /* Game Container */
 .game-container {
-    width: 640px;
+    /* Width is now flexible based on content */
+    max-width: 900px;
+    /* Limit max width */
+    width: auto;
+    max-height: 95vh;
+    margin-top: auto;
+    margin-bottom: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* Let content define width */
     text-align: center;
     background-color: var(--background-color);
     border: 8px solid var(--primary-color);
     border-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAApklEQVR4Ae2XwQ2DMAxF+/8/uhAqoJM6iFPZuKcXIh54Fh9rvksyS3IuKmqZmX/nBwiQAWQAGUAGkAEkAQkAGUAGkAEkAQkAGUAGkAEkAQkAGUAGkAEkAQkAf7t79f7n3wGAj/Pz8/MvkAHOASzNlQCzZg2ALMM8QOPyUQAW7NkvAZgGEAYgDEAYgAwgAzB7vb7/90+AK8u2gLi7A8Bucc8LABmADOgC8AGMAPAC0AFVFvABpQBZQP4BJ0ADNKAFBICvfAIgIpgAzogXiwAAAABJRU5ErkJggg==') 8 repeat;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-    /* Etwas kleinerer Schatten */
-    padding: 10px;
-    /* Weniger Padding */
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.4);
+    padding: 15px;
     position: relative;
-    /* Für absolute Positionierung innen */
 }
 
+/* New Header */
+.game-header {
+    display: flex;
+    flex-wrap: wrap;
+    /* Allow wrapping on smaller screens */
+    justify-content: space-around;
+    /* Distribute sections */
+    align-items: center;
+    background-color: var(--secondary-color);
+    padding: 8px 10px;
+    border-bottom: 3px solid var(--border-color);
+    margin-bottom: 15px;
+    /* Space below header */
+    border-radius: 4px;
+    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.15);
+    gap: 15px;
+    /* Gap between sections */
+}
+
+.header-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    /* Gap within sections */
+}
+
+.header-section label,
+.header-section span {
+    font-size: 14px;
+    font-weight: bold;
+    color: var(--text-color);
+}
+
+.header-section select {
+    padding: 4px 6px;
+    font-family: 'MedievalSharp', cursive;
+    font-size: 13px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    background-color: var(--background-color);
+}
+
+/* Title */
 h1 {
     color: var(--accent-color);
     text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.2);
-    /* Subtiler Schatten */
-    font-size: 2.2em;
-    /* Etwas kleiner */
-    margin: 5px 0 10px 0;
-    /* Weniger Margin */
+    font-size: 2.5em;
+    /* Slightly larger */
+    margin: 0 0 15px 0;
+    /* Adjusted margin */
     letter-spacing: 1px;
-    /* Weniger Spacing */
 }
 
-/* PixiJS-Container */
-.game-canvas-container {
-    border: 3px solid var(--border-color);
-    /* Dünnerer Rand */
-    background-color: var(--grass-color);
-    /* Wird von JS überschrieben */
-    border-radius: 3px;
-    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.2);
-    width: 640px;
-    height: 416px;
-    position: relative;
-    overflow: hidden;
-    /* Wichtig für PixiJS-Rendering */
-    margin: 0 auto;
-    /* Zentriert im Game-Container */
-    cursor: default;
-    /* Standard-Mauszeiger über dem Spiel */
-}
-
-/* PixiJS Canvas-Style */
-canvas {
-    display: block;
-    /* Entfernt unteren Leerraum */
-    width: 100%;
-    height: 100%;
-}
-
-/* Map Selection */
-.map-selection {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 10px;
-    /* Weniger Margin */
-    gap: 8px;
-    /* Weniger Abstand */
-}
-
-.map-button {
-    padding: 6px 12px;
-    /* Weniger Padding */
-    background-color: var(--secondary-color);
-    color: var(--text-color);
-    border: 2px solid var(--border-color);
-    border-radius: 4px;
-    cursor: pointer;
-    font-family: 'MedievalSharp', cursive;
-    font-size: 14px;
-    /* Kleinere Schrift */
-    transition: all 0.2s ease-in-out;
-    box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.map-button:hover {
-    background-color: var(--primary-color);
-    color: var(--background-color);
-    transform: translateY(-1px);
-    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
-}
-
-.map-button.selected {
-    background-color: var(--accent-color);
-    color: var(--background-color);
-    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
-    transform: translateY(1px);
-}
-
-/* Game Info */
+/* Game Info (below title, above canvas) */
 .game-info {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin: 10px 0;
-    /* Weniger Margin */
-    padding: 8px 12px;
-    /* Weniger Padding */
+    margin: 0 0 15px 0;
+    /* Margin below info */
+    padding: 10px 15px;
     background-color: var(--secondary-color);
     border: 2px solid var(--border-color);
-    /* Dünnerer Rand */
     border-radius: 4px;
     box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.2);
 }
 
 .resource-info {
     display: flex;
-    gap: 20px;
-    /* Weniger Abstand */
-    font-size: 16px;
-    /* Kleinere Schrift */
+    gap: 25px;
+    margin-right: 25px;
+    font-size: 18px;
+    /* Slightly larger */
     font-weight: bold;
     color: var(--text-color);
 }
 
 .wave-timer {
     display: flex;
-    /* Nebeneinander */
     align-items: center;
-    /* Zentriert vertikal */
-    gap: 10px;
-    /* Abstand zwischen Countdown und Button */
+    gap: 12px;
 }
 
 #wave-countdown {
-    font-size: 14px;
-    /* Kleinere Schrift */
+    font-size: 16px;
     color: var(--text-color);
     background: rgba(255, 255, 255, 0.3);
-    padding: 3px 8px;
-    /* Etwas mehr Padding */
+    padding: 4px 10px;
     border-radius: 3px;
-    min-width: 50px;
-    /* Mindestbreite für Text */
+    min-width: 60px;
     text-align: center;
 }
 
-/* Nur noch der Haupt-Start-Button */
+/* Start Button Style */
 .start-button {
-    padding: 6px 12px;
-    /* Weniger Padding */
+    padding: 8px 15px;
+    /* Slightly larger */
     background-color: var(--accent-color);
     color: var(--background-color);
     border: 2px solid var(--border-color);
     border-radius: 4px;
     cursor: pointer;
     font-family: 'MedievalSharp', cursive;
-    font-size: 14px;
-    /* Kleinere Schrift */
+    font-size: 16px;
+    /* Larger font */
     transition: all 0.2s ease-in-out;
     box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
 }
@@ -208,19 +183,68 @@ canvas {
     box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-/* Game Controls (Save/Load) */
-.game-controls {
-    display: flex;
-    justify-content: center;
-    /* Center buttons */
-    gap: 10px;
-    /* Space between buttons */
-    margin-top: 10px;
-    /* Space above buttons */
-    margin-bottom: 5px;
-    /* Space below buttons */
+/* Canvas Wrapper and Container */
+.game-canvas-wrapper {
+    margin: 0 auto 15px auto;
+    /* Center wrapper, add margin below */
+    border: 3px solid var(--border-color);
+    border-radius: 3px;
+    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    /* Crucial for contained canvas */
+    position: relative;
+    /* Background set by JS */
+    flex-shrink: 0;
 }
 
+.game-canvas-container {
+    width: 100%;
+    height: 100%;
+    /* position: relative;  <- Not needed here */
+    cursor: default;
+}
+
+/* PixiJS Canvas Style */
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* Map Selection (now in header) */
+.map-selection {
+    /* Styles moved to header-section or applied directly */
+    gap: 8px;
+}
+
+.map-button {
+    padding: 6px 12px;
+    background-color: var(--primary-color);
+    /* Slightly darker base */
+    color: var(--background-color);
+    border: 2px solid var(--accent-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: 'MedievalSharp', cursive;
+    font-size: 14px;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.map-button:hover {
+    background-color: var(--accent-color);
+    transform: translateY(-1px);
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.map-button.selected {
+    background-color: var(--accent-color);
+    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+    transform: translateY(1px);
+    border-color: var(--primary-color);
+}
+
+/* Control Buttons (Save/Load/Help in header) */
 .control-button {
     padding: 6px 12px;
     background-color: var(--secondary-color);
@@ -234,51 +258,56 @@ canvas {
     box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-.control-button:hover {
+.control-button:hover:not(:disabled) {
     background-color: var(--primary-color);
     color: var(--background-color);
     transform: translateY(-1px);
     box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
 }
 
-/* Optional: Specific colors for save/load */
+/* Specific button colors */
 .save-button {
     background-color: #27ae60;
-    /* Greenish */
     color: white;
 }
 
-.save-button:hover {
+.save-button:hover:not(:disabled) {
     background-color: #229954;
 }
 
 .load-button {
     background-color: #2980b9;
-    /* Bluish */
     color: white;
 }
 
-.load-button:hover {
+.load-button:hover:not(:disabled) {
     background-color: #2471a3;
 }
 
-/* Tower Icons (Basis für alle Icons) */
+.help-button {
+    background-color: #8e44ad;
+    color: white;
+}
+
+.help-button:hover:not(:disabled) {
+    background-color: #7d3c98;
+}
+
+
+/* Tower Icons */
 .tower-icon {
     width: 32px;
-    /* Angepasst an kleinere Optionsgröße */
     height: 32px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 18px;
-    /* Angepasste Größe für Emojis/Text */
     color: white;
     text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.4);
     box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.3);
 }
 
-/* Spezifische Tower Icons */
 .basic-tower {
     background-color: #3498db;
 }
@@ -319,69 +348,57 @@ canvas {
     content: "⚡";
 }
 
-
 /* Upgrade Panel */
 .upgrade-panel {
     position: absolute;
-    /* Innerhalb des game-containers */
-    width: 220px;
-    /* Noch Schmaler */
+    width: 240px;
+    /* Slightly wider */
     background-color: var(--background-color);
     border: 3px solid var(--border-color);
-    /* Dünnerer Rand */
     border-radius: 6px;
-    /* Kleinerer Radius */
-    padding: 10px;
-    /* Weniger Padding */
+    padding: 12px;
     color: var(--text-color);
     display: none;
-    /* Wird per JS angezeigt */
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-    /* Angepasster Schatten */
     z-index: 100;
-    font-size: 13px;
-    /* Noch etwas kleiner */
+    font-size: 14px;
+    /* Slightly larger base font */
 }
+
+#upgradePanelTitle {
+    margin: 0 0 10px 0;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--secondary-color);
+    font-size: 1.2em;
+    color: var(--accent-color);
+}
+
 
 .tower-info {
-    margin-bottom: 8px;
-    /* Weniger Abstand */
-    text-align: left;
-    line-height: 1.3;
-    /* Weniger Zeilenabstand */
-}
-
-.tower-info b {
-    font-size: 1.15em;
-    color: var(--accent-color);
-    display: block;
-    /* Eigene Zeile */
-    margin-bottom: 4px;
-}
-
-/* Umbenannt und überarbeitet */
-.upgrade-progress {
     margin-bottom: 10px;
-    /* Weniger Abstand */
+    text-align: left;
+    line-height: 1.4;
+    /* More spacing */
+}
+
+/* Upgrade Path Visualization */
+.upgrade-progress {
+    margin-bottom: 12px;
     background-color: rgba(0, 0, 0, 0.05);
     border: 1px solid var(--secondary-color);
     border-radius: 4px;
-    padding: 5px 8px;
-    /* Kompakteres Padding */
+    padding: 6px 10px;
 }
 
-/* Upgrade-Pfad-Visualisierung */
 .upgrade-path {
     display: flex;
     align-items: center;
     justify-content: space-between;
     height: 22px;
-    /* Höhe reduziert */
 }
 
 .level-marker {
     width: 20px;
-    /* Kleiner */
     height: 20px;
     background-color: var(--background-color);
     border: 2px solid var(--border-color);
@@ -391,12 +408,10 @@ canvas {
     justify-content: center;
     font-weight: bold;
     font-size: 11px;
-    /* Kleiner */
     position: relative;
     z-index: 2;
     transition: all 0.3s ease;
     flex-shrink: 0;
-    /* Verhindert Schrumpfen */
 }
 
 .level-marker.achieved {
@@ -407,18 +422,14 @@ canvas {
 
 .level-marker.current {
     box-shadow: 0 0 5px gold;
-    /* Subtilerer Schatten */
     transform: scale(1.1);
 }
 
 .level-path {
     height: 3px;
-    /* Dünner */
     background-color: var(--border-color);
     flex-grow: 1;
-    /* Nimmt verfügbaren Platz ein */
     margin: 0 3px;
-    /* Kleiner Abstand zu Markern */
     position: relative;
     z-index: 1;
     border-radius: 2px;
@@ -429,41 +440,34 @@ canvas {
     background-color: var(--accent-color);
 }
 
+/* Upgrade Buttons */
 .upgrade-buttons {
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    /* Weniger Abstand zwischen Buttons */
+    gap: 6px;
 }
 
 .upgrade-button {
     width: 100%;
-    padding: 7px;
-    /* Weniger Padding */
+    padding: 8px;
     background-color: var(--accent-color);
     color: var(--background-color);
     border: 2px solid var(--border-color);
     border-radius: 4px;
     cursor: pointer;
     font-family: 'MedievalSharp', cursive;
-    font-size: 12px;
-    /* Kleiner */
+    font-size: 13px;
+    /* Slightly larger */
     transition: all 0.2s ease-in-out;
     text-align: center;
     box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
-    line-height: 1.2;
-    /* Bessere Lesbarkeit bei kleiner Schrift */
+    line-height: 1.3;
 }
-
-/* Spezifisches Styling für Kosten-Span im Button - NICHT MEHR VERWENDET*/
-/* .upgrade-button #upgradeCost { ... } */
-
 
 .upgrade-button:hover:not(:disabled) {
     background-color: #5e3211;
     transform: translateY(-1px);
     box-shadow: 1px 2px 4px rgba(0, 0, 0, 0.3);
-    /* Angepasster Hover-Schatten */
 }
 
 .upgrade-button:disabled {
@@ -474,21 +478,11 @@ canvas {
     box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-/* Max Level Button Style */
-/* .upgrade-button:disabled[title="Max Level"] { ... } */
-/* Title wird nicht mehr verwendet */
-
-/* Style for upgrade button when unaffordable */
 .upgrade-button.cant-afford {
     background-color: #a18367;
-    /* Same as disabled */
     color: #ddc;
-    /* Slightly different text color */
     cursor: not-allowed;
-    transform: none;
-    box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.2);
 }
-
 
 .sell-button {
     background-color: #c0392b;
@@ -510,220 +504,314 @@ canvas {
 /* Radial Tower Menu */
 .radial-menu {
     position: fixed;
-    /* Absolut zum Viewport */
     z-index: 150;
-    /* Über dem Upgrade Panel */
     pointer-events: none;
-    /* Klicks gehen durch das Haupt-Div */
     display: none;
-    /* Wird per JS gesteuert */
     transform: translate(-50%, -50%);
-    /* Zentriert das Menü um den Klickpunkt */
     width: calc(var(--radius) * 2 + 60px);
-    /* Dynamische Breite basierend auf Radius */
     height: calc(var(--radius) * 2 + 60px);
-    /* Dynamische Höhe */
 }
 
 .tower-option-radial {
     position: absolute;
     width: 44px;
-    /* Kleiner */
     height: 44px;
     border-radius: 50%;
     background-color: var(--secondary-color);
     border: 2px solid var(--border-color);
-    /* Dünnerer Rand */
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-    /* Angepasster Schatten */
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     pointer-events: auto;
-    /* Klicks auf Optionen erlauben */
     transition: transform 0.15s ease-out, box-shadow 0.15s ease-out, border-color 0.15s ease-out;
-    /* Position wird unten definiert */
-    /* Wichtig: Positionierung relativ zur Mitte des .radial-menu Containers */
     left: 50%;
     top: 50%;
+    /* Transform positioning applied per button */
 }
 
 .tower-option-radial:hover {
     box-shadow: 0 3px 12px rgba(255, 215, 0, 0.6);
-    /* Angepasster Schatten */
     border-color: var(--accent-color);
     transform: translate(-50%, -50%) scale(1.15);
-    /* Skalierung beibehalten */
+    /* Apply scale on base transform */
     z-index: 151;
 }
 
-/* Korrigierte Positionierung relativ zur Mitte (50%, 50%) des Parents */
-/* Basic - Oben */
+/* Positioning relative to center (50%, 50%) */
 .radial-menu #radialBasicTower {
-    transform: translate(-50%, -50%) translateY(calc(-1 * var(--radius)));
+    transform: translate(-50%, calc(-50% - var(--radius)));
 }
 
 .radial-menu #radialBasicTower:hover {
-    transform: translate(-50%, -50%) translateY(calc(-1 * var(--radius))) scale(1.15);
+    transform: translate(-50%, calc(-50% - var(--radius))) scale(1.15);
 }
 
-/* Sniper - Rechts-Oben */
 .radial-menu #radialSniperTower {
-    transform: translate(-50%, -50%) translateX(calc(var(--radius) * 0.951)) translateY(calc(-1 * var(--radius) * 0.309));
+    transform: translate(calc(-50% + var(--radius) * 0.951), calc(-50% - var(--radius) * 0.309));
 }
 
 .radial-menu #radialSniperTower:hover {
-    transform: translate(-50%, -50%) translateX(calc(var(--radius) * 0.951)) translateY(calc(-1 * var(--radius) * 0.309)) scale(1.15);
+    transform: translate(calc(-50% + var(--radius) * 0.951), calc(-50% - var(--radius) * 0.309)) scale(1.15);
 }
 
-/* Slow - Rechts-Unten */
 .radial-menu #radialSlowTower {
-    transform: translate(-50%, -50%) translateX(calc(var(--radius) * 0.588)) translateY(calc(var(--radius) * 0.809));
+    transform: translate(calc(-50% + var(--radius) * 0.588), calc(-50% + var(--radius) * 0.809));
 }
 
 .radial-menu #radialSlowTower:hover {
-    transform: translate(-50%, -50%) translateX(calc(var(--radius) * 0.588)) translateY(calc(var(--radius) * 0.809)) scale(1.15);
+    transform: translate(calc(-50% + var(--radius) * 0.588), calc(-50% + var(--radius) * 0.809)) scale(1.15);
 }
 
-/* Bomb - Links-Unten */
 .radial-menu #radialBombTower {
-    transform: translate(-50%, -50%) translateX(calc(-1 * var(--radius) * 0.588)) translateY(calc(var(--radius) * 0.809));
+    transform: translate(calc(-50% - var(--radius) * 0.588), calc(-50% + var(--radius) * 0.809));
 }
 
 .radial-menu #radialBombTower:hover {
-    transform: translate(-50%, -50%) translateX(calc(-1 * var(--radius) * 0.588)) translateY(calc(var(--radius) * 0.809)) scale(1.15);
+    transform: translate(calc(-50% - var(--radius) * 0.588), calc(-50% + var(--radius) * 0.809)) scale(1.15);
 }
 
-/* Lightning - Links-Oben */
-/* Stelle sicher, dass die ID #radialLightningTower im HTML existiert, falls dieser Turm aktiv ist */
 .radial-menu #radialLightningTower {
-    transform: translate(-50%, -50%) translateX(calc(-1 * var(--radius) * 0.951)) translateY(calc(-1 * var(--radius) * 0.309));
+    transform: translate(calc(-50% - var(--radius) * 0.951), calc(-50% - var(--radius) * 0.309));
 }
 
 .radial-menu #radialLightningTower:hover {
-    transform: translate(-50%, -50%) translateX(calc(-1 * var(--radius) * 0.951)) translateY(calc(-1 * var(--radius) * 0.309)) scale(1.15);
+    transform: translate(calc(-50% - var(--radius) * 0.951), calc(-50% - var(--radius) * 0.309)) scale(1.15);
 }
-
 
 .tower-option-radial.disabled {
     opacity: 0.5;
     cursor: not-allowed;
     background-color: #bdaea1;
-    /* Ausgegraut */
 }
 
-/* Hover-Effekt für disabled aufheben */
+/* Remove hover scale/shadow from disabled */
 .tower-option-radial.disabled:hover {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
     border-color: var(--border-color);
-    /* Die spezifischen transform-Werte im :hover entfernen, damit sie auf der disabled-Position bleiben */
+    /* Re-apply original transform to prevent scaling */
 }
 
 .radial-menu #radialBasicTower.disabled:hover {
-    transform: translate(-50%, -50%) translateY(calc(-1 * var(--radius)));
+    transform: translate(-50%, calc(-50% - var(--radius)));
 }
 
 .radial-menu #radialSniperTower.disabled:hover {
-    transform: translate(-50%, -50%) translateX(calc(var(--radius) * 0.951)) translateY(calc(-1 * var(--radius) * 0.309));
+    transform: translate(calc(-50% + var(--radius) * 0.951), calc(-50% - var(--radius) * 0.309));
 }
 
 .radial-menu #radialSlowTower.disabled:hover {
-    transform: translate(-50%, -50%) translateX(calc(var(--radius) * 0.588)) translateY(calc(var(--radius) * 0.809));
+    transform: translate(calc(-50% + var(--radius) * 0.588), calc(-50% + var(--radius) * 0.809));
 }
 
 .radial-menu #radialBombTower.disabled:hover {
-    transform: translate(-50%, -50%) translateX(calc(-1 * var(--radius) * 0.588)) translateY(calc(var(--radius) * 0.809));
+    transform: translate(calc(-50% - var(--radius) * 0.588), calc(-50% + var(--radius) * 0.809));
 }
 
 .radial-menu #radialLightningTower.disabled:hover {
-    transform: translate(-50%, -50%) translateX(calc(-1 * var(--radius) * 0.951)) translateY(calc(-1 * var(--radius) * 0.309));
+    transform: translate(calc(-50% - var(--radius) * 0.951), calc(-50% - var(--radius) * 0.309));
 }
 
 
-/* Preis-Label als Tooltip */
+/* Price/Name Tooltip */
 .tower-option-radial::after {
-    content: attr(data-cost) " G";
-    /* "G" für Gold hinzugefügt */
+    /* Content set by CSS, uses data-tooltip (name only) and data-cost */
+    content: attr(data-tooltip) " (" attr(data-cost) " G)";
     position: absolute;
-    bottom: -25px;
-    /* Weniger Abstand */
+    bottom: -28px;
+    /* More space */
     left: 50%;
     transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.8);
+    background-color: rgba(0, 0, 0, 0.85);
     color: white;
-    padding: 2px 6px;
-    /* Kompakter */
+    padding: 3px 7px;
     border-radius: 3px;
-    font-size: 10px;
-    /* Sehr kleine Schrift */
+    font-size: 11px;
     font-family: sans-serif;
-    /* Besser lesbar */
     white-space: nowrap;
     opacity: 0;
+    /* Standardmäßig ausgeblendet */
     transition: opacity 0.2s ease 0.1s;
-    /* Leichte Verzögerung */
     pointer-events: none;
+    z-index: 155;
+    /* Above other elements */
 }
 
+/* Tooltip positioning override for the TOP button (Basic Tower) */
+/* Kombinierte Regel für normale und deaktivierte Zustände */
+#radialBasicTower::after {
+    top: -28px;
+    /* Positioniere die Oberkante des Tooltips 28px ÜBER der Oberkante des Buttons */
+    bottom: auto;
+    /* Hebe die standardmäßige 'bottom'-Positionierung auf */
+}
+
+
+/* Zeige Tooltip bei Hover (Standard) */
 .tower-option-radial:hover::after {
     opacity: 1;
 }
 
+/* Tooltip für deaktivierte Buttons (Inhalt wird gesetzt, aber durch :hover unten ausgeblendet) */
 .tower-option-radial.disabled::after {
-    content: "Zu teuer";
-    /* Text für deaktivierte Optionen wegen Goldmangel */
+    /* data-tooltip-expensive wird in ui.js gesetzt */
+    /* Wir verwenden den normalen Tooltip-Inhalt, da der Preis hier nicht angezeigt wird */
+    content: attr(data-tooltip) " (" attr(data-cost) " G)";
+    /* Zeigt trotzdem den Standard an, wird aber bei Hover ausgeblendet */
     color: #ffdddd;
-    opacity: 1;
-    /* Immer sichtbar bei disabled hover (optional) */
+    /* Kann optional bleiben, um den Unterschied im Code zu sehen, aber ist nicht sichtbar */
+}
+
+/* Tooltip positioning override for the TOP button (Basic Tower) when disabled */
+#radialBasicTower.disabled::after {
+    top: -28px;
+    /* Behalte die Positionierung bei */
+    bottom: auto;
+}
+
+/* Verstecke den Tooltip bei Hover, WENN der Button deaktiviert ist */
+.tower-option-radial.disabled:hover::after {
+    opacity: 0;
+    /* Überschreibt die allgemeine :hover Regel */
 }
 
 
-/* Cancel-Button im Zentrum des Radialmenüs */
+/* Cancel Button */
 .tower-option-cancel {
     position: absolute;
     width: 30px;
-    /* Kleiner */
     height: 30px;
     border-radius: 50%;
     background-color: rgba(255, 255, 255, 0.85);
-    /* Etwas weniger transparent */
     border: 2px solid #c0392b;
     box-shadow: 0 0 6px rgba(0, 0, 0, 0.3);
-    /* Subtilerer Schatten */
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     pointer-events: auto;
-    /* Zentriert auf der Mausposition mit transform im Hauptmenü */
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    /* Zentrieren */
     z-index: 152;
-    /* Über den anderen Turm-Optionen */
     transition: all 0.15s ease;
 }
 
 .tower-option-cancel:hover {
     background-color: #e74c3c;
     transform: translate(-50%, -50%) scale(1.15);
-    /* Skalierung beibehalten */
 }
 
 .cancel-icon {
     color: #c0392b;
     font-size: 18px;
-    /* Kleiner */
     font-weight: bold;
     line-height: 1;
-    /* Verhindert zusätzlichen vertikalen Platz */
     transition: color 0.15s ease;
 }
 
 .tower-option-cancel:hover .cancel-icon {
     color: #ffffff;
 }
+
+/* Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--modal-overlay-bg);
+    display: flex;
+    /* Use flexbox for centering */
+    justify-content: center;
+    align-items: center;
+    z-index: 200;
+    /* Above everything else */
+    padding: 20px;
+    /* Padding around modal */
+    box-sizing: border-box;
+}
+
+.modal-content {
+    background-color: var(--modal-content-bg);
+    padding: 25px 30px;
+    border-radius: 8px;
+    border: 4px solid var(--border-color);
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.4);
+    max-width: 600px;
+    /* Max width for content */
+    width: 90%;
+    /* Responsive width */
+    max-height: 80vh;
+    /* Limit height */
+    overflow-y: auto;
+    /* Allow scrolling if content overflows */
+    color: var(--text-color);
+    text-align: left;
+    /* Default text align */
+}
+
+.modal-content h2 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--accent-color);
+    font-size: 1.8em;
+    text-align: center;
+}
+
+.modal-content p,
+.modal-content div#modalBody {
+    /* Target div directly for help content */
+    margin-bottom: 15px;
+    line-height: 1.6;
+    font-size: 15px;
+}
+
+/* Style help sections */
+#modalBody h3 {
+    color: var(--primary-color);
+    margin-top: 20px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--secondary-color);
+    padding-bottom: 4px;
+    font-size: 1.3em;
+}
+
+#modalBody ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+#modalBody li {
+    margin-bottom: 8px;
+}
+
+#modalBody b {
+    color: var(--accent-color);
+}
+
+
+.modal-close-button {
+    display: block;
+    /* Make it a block element */
+    margin: 20px auto 0 auto;
+    /* Center horizontally */
+    padding: 8px 20px;
+    background-color: var(--accent-color);
+    color: var(--background-color);
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: 'MedievalSharp', cursive;
+    font-size: 15px;
+    transition: background-color 0.2s ease;
+}
+
+.modal-close-button:hover {
+    background-color: #5e3211;
+}
+
 
 /* --- END OF FILE styles.css --- */

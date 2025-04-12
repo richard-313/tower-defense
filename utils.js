@@ -1,3 +1,4 @@
+// --- START OF FILE utils.js ---
 // utils.js
 // Contains general utility functions used across different parts of the game.
 
@@ -12,8 +13,10 @@
  * @param {number} [rotation=0] - The rotation of the star in radians.
  */
 function drawStar(graphics, x, y, points, outerRadius, innerRadius, rotation = 0) {
+    if (!graphics || graphics._destroyed) return; // Safety check
+
     const step = Math.PI / points;
-    // Start oben (-PI/2) plus die angegebene Rotation
+    // Start slightly offset from pure top (-PI/2) for a more standard star look, plus rotation
     const startAngle = rotation - Math.PI / 2;
 
     graphics.moveTo(
@@ -29,7 +32,13 @@ function drawStar(graphics, x, y, points, outerRadius, innerRadius, rotation = 0
             y + radius * Math.sin(angle)
         );
     }
-    graphics.closePath(); // Schließt den Pfad
+    graphics.closePath(); // Close the path to fill correctly
 }
 
 // --- Füge hier bei Bedarf weitere Utility-Funktionen hinzu ---
+// Example: Function to format currency (useful for UI)
+// function formatGold(amount) {
+//    return `${amount} G`;
+// }
+
+// --- END OF FILE utils.js ---

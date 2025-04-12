@@ -1,1224 +1,839 @@
+// --- START OF FILE towers.js ---
 // towers.js
 
-// Globale Hilfsfunktion drawStar (sollte in utils.js sein und vorher geladen werden)
+// Stellt sicher, dass drawStar aus utils.js geladen wurde
 // function drawStar(graphics, x, y, points, outerRadius, innerRadius, rotation = 0) { ... }
 
 class TowerManager {
     constructor(app, gameMap) {
         this.app = app;
-        this.gameMap = gameMap;
+        this.gameMap = gameMap; // Uses mapConfig.tileSize internally
         this.towers = [];
-        this.projectiles = []; // Behalten für andere Türme
-        this.selectedTower = null;
-        this.hoverTower = null;
+        this.projectiles = [];
+        this.selectedTower = null; // Might be redundant if UI handles selection state
+        this.hoverTower = null;   // Might be redundant if UI handles hover state
 
-        // Container für Türme und Projektile/Effekte
-        this.towerContainer = new PIXI.Container();
-        this.towerContainer.name = "towerContainer"; // Namen setzen für Index-Findung
-        this.projectileContainer = new PIXI.Container();
-        this.projectileContainer.name = "projectileContainer";
+        // Containers
         this.rangeCirclesContainer = new PIXI.Container();
-        this.effectsContainer = new PIXI.Container(); // Separater Container für Blitze
+        this.towerContainer = new PIXI.Container();
+        this.effectsContainer = new PIXI.Container(); // For lightning, explosions
+        this.projectileContainer = new PIXI.Container();
 
-        // Zur Stage hinzufügen (Reihenfolge beachten: Effekte über Türmen)
+        // Naming containers for reliable ordering/finding
+        this.rangeCirclesContainer.name = "rangeCirclesContainer";
+        this.towerContainer.name = "towerContainer";
+        this.effectsContainer.name = "towerEffectsContainer"; // Specific name for tower effects
+        this.projectileContainer.name = "projectileContainer";
+
+        // Add containers to stage in desired order (bottom to top)
         this.app.stage.addChild(this.rangeCirclesContainer);
         this.app.stage.addChild(this.towerContainer);
-        this.app.stage.addChild(this.effectsContainer); // Effekt-Container
+        this.app.stage.addChild(this.effectsContainer);
         this.app.stage.addChild(this.projectileContainer);
 
-        // Vorschaubilder
+        // Ensure Enemy Effects container is positioned correctly relative to these
+        // This assumes enemyManager might exist already during initialization
+        if (window.game?.enemyManager) {
+            window.game.enemyManager.positionEffectsContainer();
+        }
+
+        // Tower preview graphic
         this.previewGraphics = null;
     }
 
     updateMap(gameMap) {
-        this.gameMap = gameMap;
+        this.gameMap = gameMap; // Update reference
     }
 
     addTower(type, x, y) {
+        // x, y should already be the tile center from UI
         const tileX = Math.floor(x / this.gameMap.tileSize);
         const tileY = Math.floor(y / this.gameMap.tileSize);
 
-        // Prüfen, ob die Kachel innerhalb der Grenzen liegt und frei ist
         if (tileX < 0 || tileX >= this.gameMap.width || tileY < 0 || tileY >= this.gameMap.height) return false;
         if (this.gameMap.isTileOccupied(x, y)) {
-            // console.log("Tile is occupied by path");
             return false;
         }
-        if (this.towers.some(tower => Math.floor(tower.x / this.gameMap.tileSize) === tileX && Math.floor(tower.y / this.gameMap.tileSize) === tileY)) {
-            // console.log("Tile is occupied by another tower");
-            return false; // Hier steht bereits ein Turm
+        // Check if another tower occupies the *exact* center point
+        if (this.towers.some(tower => tower && tower.x === x && tower.y === y)) {
+            return false;
         }
 
-
-        // Turm-Konfiguration abrufen
         const towerType = towerTypes[type];
         if (!towerType) {
             console.error(`Tower type "${type}" not found.`);
             return false;
         }
 
-        // Mittelpunkt der Kachel
-        const centerPoint = this.gameMap.getTileCenter(x, y);
+        const centerPoint = { x: x, y: y }; // Use the provided center point
 
-        // Turm-Container erstellen
         const towerContainer = new PIXI.Container();
         towerContainer.x = centerPoint.x;
         towerContainer.y = centerPoint.y;
 
-        // Turm-Grafik
         const towerGraphics = new PIXI.Graphics();
         towerContainer.addChild(towerGraphics);
 
-        // Neuen Turm erstellen
+        // Create the base tower object
         const newTower = {
-            x: centerPoint.x,
-            y: centerPoint.y,
+            x: centerPoint.x, y: centerPoint.y,
             type: type,
-            name: towerType.name,
-            damage: towerType.damage,
-            range: towerType.range,
-            fireRate: towerType.fireRate,
-            lastShot: 0,
-            target: null,
+            nameKey: towerType.name, // Store translation key
+            damage: towerType.damage, range: towerType.range, fireRate: towerType.fireRate,
+            lastShot: 0, target: null,
             color: towerType.color,
-            projectileColor: towerType.projectileColor,
-            projectileSize: towerType.projectileSize,
-            projectileSpeed: towerType.projectileSpeed,
+            projectileColor: towerType.projectileColor, projectileSize: towerType.projectileSize, projectileSpeed: towerType.projectileSpeed,
             effect: towerType.effect || null,
-            container: towerContainer,
-            graphics: towerGraphics,
-            selected: false,
-            hover: false,
-            level: 0, // Start bei Level 0 (Basis)
-            upgrades: [], // Array für angewendete Upgrades
-            angle: 0, // Richtung, in die der Turm zeigt
-            animationState: 0, // Für interne Animationen
-            sellValue: Math.floor(towerType.cost * towerType.sellFactor) // Anfänglicher Verkaufswert
+            container: towerContainer, graphics: towerGraphics,
+            selected: false, hover: false,
+            level: 0, upgrades: [], // Applied upgrades
+            angle: 0, animationState: 0,
+            sellValue: Math.floor(towerType.cost * towerType.sellFactor),
+            // --- Default specific properties to undefined or base values ---
+            slowFactor: undefined, slowDuration: undefined,
+            splashRadius: undefined,
+            chainCount: undefined, chainRange: undefined,
+            pierce: 0, // Default to 0 pierce
+            multishot: undefined, // Default to undefined
+            lastTarget: null, // For lightning variance
         };
 
-        // Spezifische Eigenschaften hinzufügen
-        if (type === 'slow') {
-            newTower.slowFactor = towerType.slowFactor;
-            newTower.slowDuration = towerType.slowDuration;
-        } else if (type === 'bomb') {
-            newTower.splashRadius = towerType.splashRadius;
-        } else if (type === 'lightning') {
-            newTower.chainCount = towerType.chainCount;
-            newTower.chainRange = towerType.chainRange;
-            newTower.lastTarget = null; // Um zu vermeiden, dass immer derselbe zuerst getroffen wird
-        }
-        // Direkte Eigenschaften vom Typ übernehmen (falls im Hauptobjekt definiert)
-        if (towerType.pierce) {
-            newTower.pierce = towerType.pierce;
-        }
-        if (towerType.multishot) {
-            newTower.multishot = towerType.multishot;
-        }
+        // --- Apply specific properties from towerType ---
+        if (towerType.slowFactor !== undefined) newTower.slowFactor = towerType.slowFactor;
+        if (towerType.slowDuration !== undefined) newTower.slowDuration = towerType.slowDuration;
+        if (towerType.splashRadius !== undefined) newTower.splashRadius = towerType.splashRadius;
+        if (towerType.chainCount !== undefined) newTower.chainCount = towerType.chainCount;
+        if (towerType.chainRange !== undefined) newTower.chainRange = towerType.chainRange;
+        if (towerType.pierce !== undefined) newTower.pierce = towerType.pierce;
+        if (towerType.multishot !== undefined) newTower.multishot = towerType.multishot;
 
-
-        // Turm zeichnen
-        this.drawTower(newTower);
-
-        // Turm zum Container hinzufügen
+        this.drawTower(newTower); // Initial draw
         this.towerContainer.addChild(towerContainer);
-
-        // Turm zum Array hinzufügen
         this.towers.push(newTower);
-
-        // console.log(`Tower ${type} added at ${tileX}, ${tileY}`);
         return true;
     }
 
-
     removeTower(towerIndex) {
-        if (towerIndex >= 0 && towerIndex < this.towers.length) {
-            const tower = this.towers[towerIndex];
-            const sellValue = tower.sellValue;
-
-            // Grafiken entfernen
-            // Sicherstellen, dass der Container noch existiert und nicht zerstört ist
-            if (tower.container && !tower.container._destroyed) {
-                if (tower.container.parent) {
-                    this.towerContainer.removeChild(tower.container);
-                }
-                tower.container.destroy({ children: true }); // Container und seine Kinder zerstören
-            }
-
-
-            // Aus Array entfernen
-            this.towers.splice(towerIndex, 1);
-
-            // Selektion aufheben, falls dieser Turm ausgewählt war
-            if (window.game && window.game.gameUI && window.game.gameUI.selectedTowerForUpgrade?.index === towerIndex) {
-                window.game.gameUI.closeUpgradePanel(); // Panel schließen, wenn der ausgewählte Turm verkauft wird
-            } else if (window.game && window.game.gameUI && window.game.gameUI.selectedTowerForUpgrade?.index > towerIndex) {
-                window.game.gameUI.selectedTowerForUpgrade.index--; // Index anpassen, wenn ein vorheriger Turm entfernt wurde
-            }
-
-
-            // Reichweitenkreise aktualisieren (um den Kreis des entfernten Turms zu löschen)
-            this.updateRangeCircles();
-
-            return sellValue;
-        }
-        return 0;
-    }
-
-    getTowerAt(x, y, radius = 20) {
-        // Klick auf Kachelmitte prüfen
-        const tileX = Math.floor(x / this.gameMap.tileSize);
-        const tileY = Math.floor(y / this.gameMap.tileSize);
-
-        for (let i = 0; i < this.towers.length; i++) {
-            const tower = this.towers[i];
-            const towerTileX = Math.floor(tower.x / this.gameMap.tileSize);
-            const towerTileY = Math.floor(tower.y / this.gameMap.tileSize);
-
-            if (towerTileX === tileX && towerTileY === tileY) {
-                // Zusätzlich Distanzprüfung, falls die Kachel groß ist
-                const dx = tower.x - x;
-                const dy = tower.y - y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                // Toleranz etwas erhöht, da tileSize jetzt kleiner ist
-                if (distance <= this.gameMap.tileSize / 2 + 5) {
-                    return { tower, index: i };
-                }
-            }
-        }
-        return null; // Kein Turm auf dieser Kachel gefunden
-    }
-
-
-    // Upgrade-Funktion anpassen, um neue Eigenschaften zu übernehmen
-    upgradeTower(towerIndex, targetLevel) {
-        if (towerIndex < 0 || towerIndex >= this.towers.length) {
-            return { success: false, cost: 0 };
-        }
+        if (towerIndex < 0 || towerIndex >= this.towers.length) return 0;
 
         const tower = this.towers[towerIndex];
-        const towerType = towerTypes[tower.type];
-        const maxLevel = towerType.upgrades.length; // Max Level ist Anzahl Upgrades
+        if (!tower) return 0; // Tower might already be gone
 
-        // Prüfen, ob das nächste Level gültig ist (immer nur +1)
-        const nextLevelIndex = tower.level; // Index des Upgrades für das nächste Level
-        if (!towerType || tower.level >= maxLevel || targetLevel !== tower.level + 1) {
-            console.warn("Ungültiges Upgrade-Ziel oder bereits Max Level erreicht.");
-            return { success: false, cost: 0 };
+        const sellValue = tower.sellValue;
+
+        // Destroy container and graphics robustly
+        if (tower.container && !tower.container._destroyed) {
+            if (tower.container.parent) {
+                // Safely remove from parent if it still exists
+                try {
+                    tower.container.parent.removeChild(tower.container);
+                } catch (e) {
+                    console.warn("Error removing tower container from parent:", e);
+                }
+            }
+            tower.container.destroy({ children: true });
         }
 
-        const upgradeData = towerType.upgrades[nextLevelIndex];
-        const cost = upgradeData.cost;
-
-
-        // Upgrade anwenden
-        tower.upgrades.push(upgradeData);
-
-        // Turmeigenschaften aktualisieren
-        for (const [key, value] of Object.entries(upgradeData)) {
-            if (key !== 'name' && key !== 'cost' && key !== 'description') {
-                // Spezielle Behandlung für Multiplikatoren
-                if (key.endsWith('Multiplier')) {
-                    const baseKey = key.replace('Multiplier', '');
-                    if (tower[baseKey] !== undefined) { // Sicherstellen, dass die Basiseigenschaft existiert
-                        tower[baseKey] *= value;
-                    }
-                } else {
-                    tower[key] = value;
-                }
+        // Remove from array only if it's the correct object
+        if (this.towers[towerIndex] === tower) {
+            this.towers.splice(towerIndex, 1);
+        } else {
+            // Fallback: Find and remove if index was wrong but tower exists
+            const actualIndex = this.towers.indexOf(tower);
+            if (actualIndex > -1) {
+                this.towers.splice(actualIndex, 1);
             }
         }
 
-        tower.level++; // Level erhöhen
 
-        // Verkaufswert aktualisieren (Basiswert + alle Upgradekosten * Faktor)
-        tower.sellValue = Math.floor(towerType.cost * towerType.sellFactor);
-        tower.upgrades.forEach(up => {
-            tower.sellValue += Math.floor(up.cost * towerType.sellFactor);
-        });
+        // Update UI selection if necessary (handled in ui.js sellTower)
+        this.updateRangeCircles(); // Remove range circle if it was selected/hovered
 
-        this.drawTower(tower); // Neu zeichnen mit Upgrades
-        return { success: true, cost: cost }; // Kosten des gerade durchgeführten Upgrades zurückgeben
+        return sellValue;
     }
 
+    getTowerAt(x, y, radius = this.gameMap.tileSize * 0.5) {
+        for (let i = 0; i < this.towers.length; i++) {
+            const tower = this.towers[i];
+            // Check if tower and its container are valid
+            if (!tower || !tower.container || tower.container._destroyed) continue;
 
-    getUpgradeCost(tower, targetLevel) {
-        const towerType = towerTypes[tower.type];
+            const dx = tower.x - x;
+            const dy = tower.y - y;
+            // Using squared distance for efficiency
+            if ((dx * dx + dy * dy) <= (radius * radius)) {
+                return { tower, index: i };
+            }
+        }
+        return null;
+    }
 
-        // Berechnet die Kosten für das *nächste* Level
-        const nextLevelIndex = tower.level;
-        if (!towerType || nextLevelIndex >= towerType.upgrades.length) {
-            return 0; // Kein weiteres Upgrade möglich
+    // --- Upgrade Logic ---
+    upgradeTower(towerIndex, targetLevel) {
+        if (towerIndex < 0 || towerIndex >= this.towers.length) return { success: false, cost: 0 };
+
+        const tower = this.towers[towerIndex];
+        // Add extra checks for tower validity
+        if (!tower || tower.container._destroyed || !towerTypes[tower.type]) {
+            console.warn("Upgrade attempt on invalid tower:", towerIndex, tower);
+            return { success: false, cost: 0 };
         }
 
-        return towerType.upgrades[nextLevelIndex].cost;
+
+        const towerType = towerTypes[tower.type];
+        const currentLevelIndex = tower.level; // Index for the *next* upgrade
+        const maxLevel = towerType.upgrades.length;
+
+        if (currentLevelIndex >= maxLevel || targetLevel !== currentLevelIndex + 1) {
+            console.warn("Invalid upgrade attempt:", { towerIndex, currentLevel: tower.level, targetLevel, maxLevel });
+            return { success: false, cost: 0 };
+        }
+
+        const upgradeData = towerType.upgrades[currentLevelIndex];
+        if (!upgradeData) {
+            console.error("Upgrade data missing for level", currentLevelIndex, "type", tower.type);
+            return { success: false, cost: 0 };
+        }
+        const cost = upgradeData.cost;
+
+        // --- Apply Upgrade Stats ---
+        tower.upgrades.push(upgradeData); // Record the applied upgrade
+
+        for (const [key, value] of Object.entries(upgradeData)) {
+            // Skip non-stat properties
+            if (['name', 'cost', 'description'].includes(key)) continue;
+
+            if (key.endsWith('Multiplier')) {
+                const baseKey = key.replace('Multiplier', '');
+                if (tower.hasOwnProperty(baseKey)) { // Check if the base property exists on the tower instance
+                    tower[baseKey] *= value;
+                } else {
+                    console.warn(`Base key "${baseKey}" not found for multiplier upgrade on tower instance ${tower.type}`);
+                }
+            } else if (tower.hasOwnProperty(key)) { // Apply direct value only if property exists
+                tower[key] = value;
+            } else {
+                console.warn(`Property "${key}" not found for direct upgrade on tower instance ${tower.type}`);
+            }
+        }
+
+        tower.level++; // Increment level AFTER applying stats for that level
+
+        // Recalculate sell value
+        tower.sellValue = Math.floor(towerType.cost * towerType.sellFactor);
+        tower.upgrades.forEach(up => {
+            if (up?.cost) tower.sellValue += Math.floor(up.cost * towerType.sellFactor);
+        });
+
+        this.drawTower(tower); // Redraw with new appearance/level indicators
+        return { success: true, cost: cost }; // Return cost for UI deduction
     }
 
+    getUpgradeCost(tower, targetLevel) {
+        if (!tower) return 0;
+        const towerType = towerTypes[tower.type];
+        const nextLevelIndex = tower.level; // Index of the upgrade for the next level
+
+        if (!towerType || !towerType.upgrades || nextLevelIndex >= towerType.upgrades.length) {
+            return 0; // No more upgrades or invalid type
+        }
+        // Check if targetLevel matches expected next level (optional check)
+        if (targetLevel !== nextLevelIndex + 1) {
+            // console.warn(`getUpgradeCost called with mismatching targetLevel (${targetLevel}) for current level (${tower.level})`);
+        }
+
+        return towerType.upgrades[nextLevelIndex]?.cost || 0; // Return cost of the next available upgrade
+    }
+
+    // --- Update Loop ---
     update(enemies, deltaTime) {
         const currentTime = Date.now();
+        // Scale deltaTime relative to 60 FPS for consistent movement/rotation speeds
+        // Limit maximum catch-up to prevent extreme jumps
+        const timeScale = Math.min(5, deltaTime / (1000 / 60));
 
-        // --- Türme aktualisieren ---
+        // --- Tower Targeting and Firing ---
         for (const tower of this.towers) {
-            if (!tower || !tower.container || tower.container._destroyed) continue; // Überspringen, falls Turm entfernt wurde
+            // Robust check if tower is still valid
+            if (!tower || !tower.container || tower.container._destroyed) continue;
 
-            tower.animationState += deltaTime * 0.001;
+            tower.animationState += deltaTime * 0.001; // For visual effects
 
-            // --- Ziel Finden ---
+            // Find potential targets in range
             let potentialTargets = enemies.filter(enemy => {
-                // Sicherstellen, dass Feind gültig ist
                 if (!enemy || !enemy.sprite || enemy.sprite._destroyed || enemy.health <= 0) return false;
                 const dx = tower.x - enemy.x;
                 const dy = tower.y - enemy.y;
-                return Math.sqrt(dx * dx + dy * dy) <= tower.range;
+                return (dx * dx + dy * dy) <= (tower.range * tower.range); // Use squared distance
             });
 
-            // Einfachstes Targeting: nächster Gegner zum Turm
+            // Simple Targeting: Closest enemy
             let closestEnemy = null;
-            let closestDistance = Infinity;
+            let minDistanceSq = Infinity;
             potentialTargets.forEach(enemy => {
                 const dx = tower.x - enemy.x;
                 const dy = tower.y - enemy.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                if (distance < closestDistance) {
-                    closestDistance = distance;
+                const distSq = dx * dx + dy * dy;
+                if (distSq < minDistanceSq) {
+                    minDistanceSq = distSq;
                     closestEnemy = enemy;
                 }
             });
+            tower.target = closestEnemy;
 
-            tower.target = closestEnemy; // Kann null sein, wenn kein Ziel in Reichweite
-
-            // --- Turm Ausrichtung ---
-            if (tower.target && tower.type !== 'lightning' && tower.type !== 'slow') {
+            // Tower Rotation (if applicable)
+            if (tower.target && tower.type !== 'lightning' && tower.type !== 'slow' && tower.type !== 'bomb') {
                 const targetAngle = Math.atan2(tower.target.y - tower.y, tower.target.x - tower.x);
+                // Use scaled time for rotation speed
+                const rotationSpeedRad = 7 * timeScale * (Math.PI / 180); // Degrees per scaled frame -> radians
                 const angleDiff = this.normalizeAngle(targetAngle - tower.angle);
-                const rotationSpeed = 10 * deltaTime * 0.001; // Radian pro Sekunde
 
-                if (Math.abs(angleDiff) > 0.05) {
-                    const rotationDirection = angleDiff > Math.PI ? -1 : (angleDiff < -Math.PI ? 1 : (angleDiff > 0 ? 1 : -1));
-                    const rotationAmount = Math.min(rotationSpeed, Math.abs(angleDiff > Math.PI ? angleDiff - Math.PI * 2 : (angleDiff < -Math.PI ? angleDiff + Math.PI * 2 : angleDiff)));
-                    tower.angle += rotationDirection * rotationAmount;
-                    tower.angle = this.normalizeAngle(tower.angle);
-                    this.drawTower(tower);
+                if (Math.abs(angleDiff) > 0.05) { // Tolerance
+                    const rotationDir = angleDiff > 0 ? 1 : -1;
+                    const rotationAmount = Math.min(rotationSpeedRad, Math.abs(angleDiff));
+                    tower.angle = this.normalizeAngle(tower.angle + rotationDir * rotationAmount);
+                    this.drawTower(tower); // Redraw if rotated
                 }
-            } else if (tower.type === 'lightning' || tower.type === 'slow') {
-                // Animation für statische Türme
+            } else if (tower.type === 'lightning' || tower.type === 'slow' || tower.type === 'bomb') {
+                // Redraw for animation even if not rotating
                 this.drawTower(tower);
             }
 
-
-            // --- Feuern ---
-            if (currentTime - tower.lastShot >= tower.fireRate && tower.target) { // Nur feuern, wenn Ziel vorhanden
+            // Firing Logic
+            if (currentTime - tower.lastShot >= tower.fireRate && tower.target) {
                 tower.lastShot = currentTime;
-
                 if (tower.type === 'lightning') {
                     this.fireLightning(tower, tower.target, enemies);
                 } else {
-                    const shotsCount = tower.multishot || 1;
-                    const angleStep = shotsCount > 1 ? 0.2 : 0;
+                    const shots = tower.multishot || 1;
+                    const angleStep = shots > 1 ? 0.15 : 0; // Angle spread for multishot
+                    const baseAngle = tower.angle; // Use current tower angle
 
-                    for (let i = 0; i < shotsCount; i++) {
-                        const angleOffset = (i - (shotsCount - 1) / 2) * angleStep;
-                        const finalAngle = tower.angle + angleOffset;
-                        let targetX = tower.target.x;
-                        let targetY = tower.target.y;
-                        this.createProjectile(tower, targetX, targetY, tower.target, finalAngle);
+                    for (let i = 0; i < shots; i++) {
+                        const angleOffset = (i - (shots - 1) / 2) * angleStep;
+                        const shotAngle = this.normalizeAngle(baseAngle + angleOffset);
+                        this.createProjectile(tower, tower.target.x, tower.target.y, tower.target, shotAngle);
                     }
                 }
             }
-        }
+        } // End tower loop
 
-        // --- Projektile aktualisieren ---
-        // Rückwärts iterieren, um Elemente sicher entfernen zu können
+        // --- Projectile Update and Collision ---
         for (let i = this.projectiles.length - 1; i >= 0; i--) {
-            const projectile = this.projectiles[i];
+            const proj = this.projectiles[i];
 
-            // Sicherheitscheck: Überspringen, falls Projektil bereits entfernt/ungültig
-            if (!projectile || !projectile.graphics || projectile.graphics._destroyed) {
-                // Wenn es noch im Array ist, aber zerstört, dann entfernen
-                if (projectile && this.projectiles[i] === projectile) { // Zusätzlicher Check
-                    this.projectiles.splice(i, 1);
-                }
+            // Robust check for destroyed/invalid projectile
+            if (!proj || !proj.graphics || proj.graphics._destroyed) {
+                if (this.projectiles[i]) this.projectiles.splice(i, 1);
                 continue;
             }
 
+            proj.timeAlive += deltaTime;
             let removed = false;
 
-            // Bewegung aktualisieren
-            if (projectile.type === 'bomb') {
-                this.updateBombProjectile(projectile, deltaTime);
-                if (projectile.flightProgress >= 1) {
-                    this.createExplosion(projectile, enemies);
-                    this.removeProjectile(i); // Entfernt aus Array und zerstört Grafik
+            // --- 1. Movement ---
+            if (proj.type === 'bomb') {
+                this.updateBombProjectile(proj, deltaTime); // Bomb uses raw deltaTime for progress
+                if (proj.flightProgress >= 1) {
+                    this.createExplosion(proj, enemies);
+                    this.removeProjectile(i); // Bomb removed after explosion
                     removed = true;
                 }
             } else {
-                this.updateStandardProjectile(projectile, deltaTime);
+                // Use timeScale for consistent standard projectile speed
+                this.updateStandardProjectile(proj, timeScale); // Pass scaled frame factor
             }
 
-            if (removed) continue; // Nächstes Projektil
+            if (removed) continue; // Skip checks if bomb exploded
 
-            // *** NEU: Timeout Check ***
-            const MAX_PROJECTILE_LIFETIME = 3000; // 5 Sekunden maximal
-            if (projectile.timeAlive > MAX_PROJECTILE_LIFETIME && projectile.type !== 'bomb') {
-                console.log(`Projectile timed out: ${projectile.type} at ${projectile.x}, ${projectile.y}`);
-                this.removeProjectile(i);
-                continue; // Nächstes Projektil
-            }
-
-            // Außerhalb der Grenzen prüfen
-            if (
-                projectile.x < -50 || projectile.x > this.gameMap.width * this.gameMap.tileSize + 50 ||
-                projectile.y < -50 || projectile.y > this.gameMap.height * this.gameMap.tileSize + 50
-            ) {
+            // --- 2. Update Graphics Position & Draw ( BEFORE checks) ---
+            if (proj.graphics && !proj.graphics._destroyed) {
+                proj.graphics.x = proj.x;
+                proj.graphics.y = (proj.type === 'bomb' ? proj.visualY : proj.y);
+                this.drawProjectile(proj); // Draw at new position
+            } else {
+                // Graphics destroyed unexpectedly? Remove projectile.
                 this.removeProjectile(i);
                 continue;
             }
 
-            // Kollisionen prüfen (gibt true zurück, wenn entfernt)
-            if (this.checkProjectileCollisions(projectile, enemies, i)) {
-                // Projektil wurde bereits entfernt in checkProjectileCollisions
+            // --- 3. Projectile Checks ---
+            // 3a. Max Lifetime
+            const MAX_PROJECTILE_LIFETIME = 4000; // 4 seconds
+            if (proj.timeAlive > MAX_PROJECTILE_LIFETIME && proj.type !== 'bomb') {
+                // console.log(`Projectile ${proj.type} timed out.`);
+                this.removeProjectile(i);
                 continue;
             }
-        }
-    }
+
+            // 3b. Off-Screen Check
+            const bounds = this.gameMap.tileSize;
+            if (proj.x < -bounds || proj.x > this.gameMap.width * this.gameMap.tileSize + bounds ||
+                proj.y < -bounds || proj.y > this.gameMap.height * this.gameMap.tileSize + bounds) {
+                // console.log(`Projectile ${proj.type} went off screen.`);
+                this.removeProjectile(i);
+                continue;
+            }
+
+            // 3c. Collision Check (if not bomb)
+            if (proj.type !== 'bomb') {
+                // Pass index 'i' for removal within the check function
+                if (this.checkProjectileCollisions(proj, enemies, i)) {
+                    // Projectile was hit and removed inside the function
+                    continue; // Go to next projectile
+                }
+            }
+
+            // --- 4. Drawing (MOVED UP) ---
+
+        } // End projectile loop
+    } // End update
+
+
+    // --- Projectile Creation and Behavior ---
 
     createProjectile(tower, targetX, targetY, targetEnemy, angle) {
         const projectileGraphics = new PIXI.Graphics();
-        // Projektile zum Projektilcontainer hinzufügen
         this.projectileContainer.addChild(projectileGraphics);
 
+        // Start slightly away from tower center along the launch angle
+        const startOffset = this.gameMap.tileSize * 0.2;
+        const startX = tower.x + Math.cos(angle) * startOffset;
+        const startY = tower.y + Math.sin(angle) * startOffset;
+
         const baseProjectile = {
-            x: tower.x,
-            y: tower.y,
-            sourceX: tower.x,
-            sourceY: tower.y,
-            targetX: targetX, // Initiale Zielposition (wird ggf. aktualisiert)
-            targetY: targetY,
-            startX: tower.x,  // Für Bomben-Parabel
-            startY: tower.y,
-            target: targetEnemy, // Referenz auf das Ziel (kann sich bewegen)
+            x: startX, y: startY,
+            sourceX: tower.x, sourceY: tower.y, // Original tower position
+            targetX: targetX, targetY: targetY, // Initial target point (will update)
+            startX: startX, startY: startY, // For bomb trajectory start
+            target: targetEnemy, // Reference to the enemy object
             damage: tower.damage,
-            speed: tower.projectileSpeed,
+            speed: tower.projectileSpeed, // Base speed factor (pixels per 60fps frame)
             size: tower.projectileSize,
             color: tower.projectileColor,
-            type: tower.type, // Turmtyp (wichtig für spezifisches Verhalten/Zeichnung)
-            effect: tower.effect, // Z.B. 'slow', 'splash', 'pierce'
-            angle: angle, // Tatsächlicher Startwinkel (wichtig für Multishot)
+            type: tower.type,
+            effect: tower.effect,
+            angle: angle, // Actual launch angle
             timeAlive: 0,
             graphics: projectileGraphics,
-            // Spezifische Eigenschaften basierend auf Turm/Effekt:
-            slowFactor: (tower.effect === 'slow' || tower.type === 'slow') ? tower.slowFactor : undefined,
-            slowDuration: (tower.effect === 'slow' || tower.type === 'slow') ? tower.slowDuration : undefined,
-            splashRadius: (tower.effect === 'splash' || tower.type === 'bomb') ? tower.splashRadius : undefined,
-            pierce: tower.pierce > 0 ? tower.pierce : 0, // Verbleibende Durchdringungen
-            hitEnemies: tower.pierce > 0 ? [] : null, // IDs der getroffenen Feinde (nur für Pierce)
-            // Bombenspezifisch:
-            flightHeight: 0,
-            maxHeight: tower.type === 'bomb' ? (50 + Math.random() * 20) : 0,
+            // Specific properties copied from tower instance
+            slowFactor: tower.slowFactor, slowDuration: tower.slowDuration,
+            splashRadius: tower.splashRadius,
+            pierce: tower.pierce > 0 ? tower.pierce : 0,
+            hitEnemies: tower.pierce > 0 ? [] : null, // IDs of enemies hit by this pierce proj
+            // Bomb specific
+            maxHeight: tower.type === 'bomb' ? (this.gameMap.tileSize * 1.5 + Math.random() * (this.gameMap.tileSize * 0.5)) : 0,
             flightProgress: 0,
-            flightDuration: tower.type === 'bomb' ? this.calculateFlightDuration(tower.x, tower.y, targetX, targetY, tower.projectileSpeed) : 0,
-            visualY: tower.y, // Für Bomben-Grafik
-            // NEU: Flag für ungültiges Ziel
-            targetInvalidated: false
+            flightDuration: tower.type === 'bomb' ? this.calculateFlightDuration(startX, startY, targetX, targetY, tower.projectileSpeed) : 0,
+            visualY: startY, // Y position for drawing the bomb arc
+            targetInvalidated: false, // Flag if original target dies/disappears
         };
 
-        // Bombe zielt auf festen Punkt, nicht auf bewegliches Ziel
+        // Bombs target a fixed location, not a moving enemy
         if (tower.type === 'bomb') {
             baseProjectile.target = null;
         }
 
-        // Position und Zeichnung initialisieren
+        // Initial position and draw
         projectileGraphics.x = baseProjectile.x;
         projectileGraphics.y = baseProjectile.y;
-        this.drawProjectile(baseProjectile); // Projektil initial zeichnen
+        this.drawProjectile(baseProjectile);
 
         this.projectiles.push(baseProjectile);
     }
 
+    calculateFlightDuration(startX, startY, targetX, targetY, speedFactor) {
+        if (speedFactor <= 0) return Infinity;
+        const dx = targetX - startX;
+        const dy = targetY - startY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        // Assume speedFactor relates to pixels per frame at 60fps
+        const pixelsPerSecond = speedFactor * 60;
+        if (pixelsPerSecond <= 0) return Infinity;
+        const durationSeconds = distance / pixelsPerSecond;
+        return durationSeconds * 1000; // Return duration in milliseconds
+    }
 
-    fireLightning(tower, initialTarget, allEnemies) {
-        let currentTarget = initialTarget;
-        // Sicherstellen, dass initialTarget gültig ist
-        if (!currentTarget || currentTarget.health <= 0 || !currentTarget.sprite || currentTarget.sprite._destroyed) {
-            return; // Kein gültiges erstes Ziel
+    updateStandardProjectile(projectile, timeScale) { // Takes scaled frame factor
+        if (!projectile.graphics || projectile.graphics._destroyed) return;
+
+        // --- Update Target Position (if target exists and is valid) ---
+        if (!projectile.targetInvalidated && projectile.target) {
+            const targetStillValid = projectile.target.health > 0 && projectile.target.sprite && !projectile.target.sprite._destroyed;
+            if (targetStillValid) {
+                projectile.targetX = projectile.target.x; // Update target coords
+                projectile.targetY = projectile.target.y;
+            } else {
+                projectile.targetInvalidated = true; // Target gone, fly towards last known position
+                projectile.target = null; // Optional: Clear reference
+            }
         }
 
-        const hitEnemies = [currentTarget];
-        const chainPositions = [{ x: tower.x, y: tower.y }];
+        // --- Movement Calculation ---
+        const dx = projectile.targetX - projectile.x;
+        const dy = projectile.targetY - projectile.y;
+        const distanceToTargetSq = dx * dx + dy * dy;
+        // Calculate move distance for this frame based on speed and timeScale
+        const moveDistance = projectile.speed * timeScale;
 
-        for (let i = 0; i < tower.chainCount && currentTarget; i++) {
-            if (i > 0) {
-                chainPositions.push({ x: currentTarget.x, y: currentTarget.y });
+        // --- Move Projectile ---
+        if (distanceToTargetSq <= moveDistance * moveDistance || distanceToTargetSq < 0.01) {
+            // Reached target point or very close
+            projectile.x = projectile.targetX;
+            projectile.y = projectile.targetY;
+            // Don't remove here; collision check in main loop handles hitting or missing
+        } else {
+            // Move towards target point
+            const distance = Math.sqrt(distanceToTargetSq);
+            const dirX = dx / distance;
+            const dirY = dy / distance;
+            projectile.x += dirX * moveDistance;
+            projectile.y += dirY * moveDistance;
+            projectile.angle = Math.atan2(dy, dx); // Update angle for drawing
+        }
+
+        // Graphics position & drawing are handled in the main update loop *after* movement
+        // projectile.graphics.x = projectile.x;
+        // projectile.graphics.y = projectile.y;
+        // this.drawProjectile(projectile); // <-- Moved to main loop
+    }
+
+    updateBombProjectile(projectile, deltaTime) { // Uses raw deltaTime for progress calculation
+        if (!projectile.graphics || projectile.graphics._destroyed) return;
+
+        // projectile.timeAlive += deltaTime; // Moved to main loop
+        const flightDurationMs = Math.max(projectile.flightDuration, 100); // Ensure minimum duration
+        const progress = Math.min(projectile.timeAlive / flightDurationMs, 1);
+        projectile.flightProgress = progress;
+
+        // Parabolic trajectory
+        projectile.x = projectile.startX + (projectile.targetX - projectile.startX) * progress;
+        projectile.y = projectile.startY + (projectile.targetY - projectile.startY) * progress; // Ground position
+        projectile.flightHeight = projectile.maxHeight * (4 * progress * (1 - progress)); // Arc height
+        projectile.visualY = projectile.y - projectile.flightHeight; // Visual position for drawing
+
+        // Graphics position & drawing handled in main loop
+        // projectile.graphics.x = projectile.x;
+        // projectile.graphics.y = projectile.visualY;
+        // this.drawProjectile(projectile); // <-- Moved to main loop
+    }
+
+    createExplosion(projectile, enemies) {
+        const explosion = new PIXI.Graphics();
+        // Safety check for valid projectile coordinates
+        if (typeof projectile.x !== 'number' || typeof projectile.y !== 'number') {
+            console.warn("Attempted to create explosion with invalid coordinates", projectile);
+            return;
+        }
+        explosion.x = projectile.x; // Explosion originates at ground impact point
+        explosion.y = projectile.y;
+        this.effectsContainer.addChild(explosion); // Add to tower effects container
+
+        let radius = 0;
+        let alpha = 1;
+        const maxRadius = projectile.splashRadius || this.gameMap.tileSize; // Fallback radius
+        const duration = 350; // ms duration of visual effect
+        let elapsed = 0;
+        let animationCallback = null; // Store callback reference
+
+        animationCallback = () => {
+            if (!explosion || explosion._destroyed) {
+                if (animationCallback && this.app?.ticker) this.app.ticker.remove(animationCallback);
+                return;
             }
 
+            elapsed += this.app.ticker.deltaMS; // Use ticker's delta
+            const progress = Math.min(elapsed / duration, 1);
+
+            radius = maxRadius * (1 - Math.pow(1 - progress, 3)); // Ease out cubic expansion
+            alpha = 1 - progress * progress; // Fade out quadratically
+
+            explosion.clear();
+            // Outer glow (yellow/orange)
+            explosion.beginFill(0xFF8800, 0.5 * alpha);
+            explosion.drawCircle(0, 0, radius);
+            explosion.endFill();
+            // Inner core (red/orange)
+            explosion.beginFill(0xFF3300, 0.7 * alpha);
+            explosion.drawCircle(0, 0, radius * 0.6);
+            explosion.endFill();
+
+            if (progress >= 1) {
+                if (explosion.parent) explosion.parent.removeChild(explosion);
+                explosion.destroy();
+                if (animationCallback && this.app?.ticker) this.app.ticker.remove(animationCallback);
+                animationCallback = null; // Clear reference
+            }
+        };
+
+        this.applySplashDamage(enemies, projectile.x, projectile.y, maxRadius, projectile.damage);
+        if (this.app?.ticker) {
+            this.app.ticker.add(animationCallback);
+        } else {
+            // Fallback: Destroy immediately if ticker is not available
+            if (explosion.parent) explosion.parent.removeChild(explosion);
+            explosion.destroy();
+            console.warn("Ticker not available for explosion animation.");
+        }
+    }
+
+    checkProjectileCollisions(projectile, enemies, projectileIndex) {
+        // Bombs don't collide mid-air
+        if (projectile.type === 'bomb') return false;
+
+        let projectileRemoved = false;
+        for (let j = enemies.length - 1; j >= 0; j--) { // Iterate backwards is safer if enemies are removed
+            const enemy = enemies[j];
+            // Ensure enemy is valid and hittable
+            if (!enemy || enemy.health <= 0 || !enemy.sprite || enemy.sprite._destroyed) continue;
+
+            // Skip if this piercing projectile has already hit this enemy
+            if (projectile.pierce > 0 && projectile.hitEnemies?.includes(enemy.id)) {
+                continue;
+            }
+
+            // Simple distance check
+            const dx = enemy.x - projectile.x;
+            const dy = enemy.y - projectile.y;
+            const distanceSq = dx * dx + dy * dy;
+            // Use combined radius squared for hit detection
+            const hitRadius = (projectile.size || 4) + enemy.size; // Use default proj size if needed
+            const hitRadiusSq = hitRadius * hitRadius;
+
+            if (distanceSq < hitRadiusSq) {
+                // --- HIT ---
+                enemy.health -= projectile.damage;
+
+                // Apply effects (e.g., slow)
+                if ((projectile.effect === 'slow' || projectile.type === 'slow') && window.game?.enemyManager) {
+                    const duration = projectile.slowDuration || 2000; // Use projectile's value or default
+                    const factor = projectile.slowFactor || 0.5;
+                    window.game.enemyManager.applyEffect(enemy, 'slow', duration, factor);
+                }
+
+                // --- Pierce Logic ---
+                if (projectile.pierce > 0) {
+                    if (!projectile.hitEnemies) projectile.hitEnemies = []; // Initialize if needed
+                    projectile.hitEnemies.push(enemy.id); // Record hit enemy
+                    projectile.pierce--; // Decrement pierce count
+
+                    if (projectile.pierce <= 0) {
+                        // Last pierce used up, remove projectile
+                        this.removeProjectile(projectileIndex);
+                        projectileRemoved = true;
+                        break; // Stop checking collisions for this projectile
+                    }
+                    // Projectile continues, check next enemy
+                } else {
+                    // Not a piercing projectile, remove on hit
+                    this.removeProjectile(projectileIndex);
+                    projectileRemoved = true;
+                    break; // Stop checking collisions for this projectile
+                }
+            }
+        }
+        return projectileRemoved; // Return true if removed
+    }
+
+    applySplashDamage(enemies, centerX, centerY, radius, baseDamage) {
+        const radiusSq = radius * radius;
+        enemies.forEach(enemy => {
+            if (!enemy || enemy.health <= 0 || !enemy.sprite || enemy.sprite._destroyed) return;
+
+            const dx = enemy.x - centerX;
+            const dy = enemy.y - centerY;
+            const distanceSq = dx * dx + dy * dy;
+
+            if (distanceSq <= radiusSq) {
+                // Optional: Damage falloff (linear example)
+                const distance = Math.sqrt(distanceSq);
+                const damageMultiplier = Math.max(0.2, 1 - (distance / radius)); // 100% at center to 20% at edge
+                const damage = baseDamage * damageMultiplier;
+                enemy.health -= damage;
+                // Health bar updated in main enemy loop
+            }
+        });
+    }
+
+    // --- Lightning Effect ---
+    fireLightning(tower, initialTarget, allEnemies) {
+        if (!initialTarget || initialTarget.health <= 0 || !initialTarget.sprite || initialTarget.sprite._destroyed) {
+            return; // No valid initial target
+        }
+
+        const hitEnemies = new Set([initialTarget]); // Use Set for efficient checking & uniqueness
+        const chainPositions = [{ x: tower.x, y: tower.y }, { x: initialTarget.x, y: initialTarget.y }]; // Start and first target
+        let currentTarget = initialTarget;
+        // Use tower's chainCount, default to 1 if undefined (meaning 1 initial hit + 1 chain = 2 targets total)
+        const maxChains = tower.chainCount ?? 1;
+
+        for (let i = 0; i < maxChains && currentTarget; i++) {
             let nextTarget = null;
-            let minDistance = tower.chainRange;
+            let minDistanceSq = (tower.chainRange || 60) ** 2; // Use squared distance
 
             allEnemies.forEach(enemy => {
-                // Prüfen ob Feind gültig ist, noch nicht getroffen wurde und in Reichweite (beide)
-                if (enemy && enemy.health > 0 && !enemy.sprite._destroyed && !hitEnemies.includes(enemy)) {
+                // Check if enemy is valid, hittable, not already hit, and within chain range
+                if (enemy && enemy.health > 0 && !enemy.sprite._destroyed && !hitEnemies.has(enemy)) {
                     const dx = currentTarget.x - enemy.x;
                     const dy = currentTarget.y - enemy.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const distSq = dx * dx + dy * dy;
 
+                    // Also check if the potential next target is within the *tower's original range*
                     const dxTower = tower.x - enemy.x;
                     const dyTower = tower.y - enemy.y;
-                    const distTower = Math.sqrt(dxTower * dxTower + dyTower * dyTower);
+                    const distSqTower = dxTower * dxTower + dyTower * dyTower;
 
-                    if (distance <= minDistance && distTower <= tower.range) {
-                        minDistance = distance;
+                    if (distSq <= minDistanceSq && distSqTower <= (tower.range * tower.range)) {
+                        minDistanceSq = distSq;
                         nextTarget = enemy;
                     }
                 }
             });
 
             if (nextTarget) {
-                hitEnemies.push(nextTarget);
-                currentTarget = nextTarget;
+                hitEnemies.add(nextTarget); // Add to the set of hit enemies
+                chainPositions.push({ x: nextTarget.x, y: nextTarget.y }); // Add position for drawing
+                currentTarget = nextTarget; // Update current target for the next jump
             } else {
-                if (currentTarget) { // Nur hinzufügen, wenn es ein Ziel gab
-                    chainPositions.push({ x: currentTarget.x, y: currentTarget.y });
-                }
-                break;
+                break; // No more targets found in range
             }
         }
 
-        // Wenn kein Sprung stattfand, aber ein gültiges Ziel da war
-        if (chainPositions.length === 1 && currentTarget) {
-            chainPositions.push({ x: currentTarget.x, y: currentTarget.y });
-        }
-
-        // Schaden anwenden
+        // Apply damage to all hit enemies (iterate over the Set)
         hitEnemies.forEach(enemy => {
-            // Erneute Prüfung, da Feind inzwischen gestorben sein könnte
+            // Double check health again before applying damage
             if (enemy && enemy.health > 0 && !enemy.sprite._destroyed) {
                 enemy.health -= tower.damage;
             }
         });
 
-        // Visuellen Effekt zeichnen
+        // Draw the visual effect using the collected positions
         this.drawLightningEffect(tower, chainPositions);
-        tower.lastTarget = currentTarget; // Für Varianz
+        tower.lastTarget = currentTarget; // Store last target for variance (optional)
     }
 
     drawLightningEffect(tower, positions) {
-        if (positions.length < 2) return;
+        if (positions.length < 2) return; // Need at least tower and one target
 
         const lightning = new PIXI.Graphics();
         const boltColor = tower.projectileColor || 0xFFFFFF;
-        const glowColor = 0xFFFF00;
+        const glowColor = 0xFFFF00; // Yellow glow
 
-        lightning.lineStyle(6 + tower.level, glowColor, 0.3);
+        // Draw Glow first (thicker, less opaque)
+        lightning.lineStyle(8 + tower.level * 2, glowColor, 0.25); // Scale thickness with level
         this.drawLightningSegment(lightning, positions);
-        lightning.lineStyle(2 + tower.level, boltColor, 0.9);
+
+        // Draw Core Bolt (thinner, more opaque)
+        lightning.lineStyle(3 + tower.level, boltColor, 0.8);
         this.drawLightningSegment(lightning, positions);
 
-        this.effectsContainer.addChild(lightning);
+        this.effectsContainer.addChild(lightning); // Add to tower effects container
 
+        // Fade out animation
         let duration = 0;
-        const maxDuration = 150; // ms
-        const fadeOut = (delta) => {
-            // Check: wurde lightning schon zerstört?
+        const maxDuration = 180; // ms - slightly longer visibility
+        let fadeOutCallback = null; // Store callback reference
+
+        fadeOutCallback = () => {
             if (!lightning || lightning._destroyed) {
-                if (this.app?.ticker) this.app.ticker.remove(fadeOut); // Sicher ticker entfernen
+                if (fadeOutCallback && this.app?.ticker) this.app.ticker.remove(fadeOutCallback);
                 return;
             }
-
             duration += this.app.ticker.deltaMS;
             const alpha = Math.max(0, 1 - (duration / maxDuration));
             lightning.alpha = alpha;
 
             if (alpha <= 0) {
-                // Robusteres Entfernen
-                if (lightning.parent) {
-                    this.effectsContainer.removeChild(lightning);
-                }
-                lightning.destroy(); // Immer zerstören
-                if (this.app?.ticker) this.app.ticker.remove(fadeOut);
+                if (lightning.parent) lightning.parent.removeChild(lightning);
+                lightning.destroy();
+                if (fadeOutCallback && this.app?.ticker) this.app.ticker.remove(fadeOutCallback);
+                fadeOutCallback = null; // Clear reference
             }
         };
-        if (this.app?.ticker) this.app.ticker.add(fadeOut); // Sicherstellen, dass Ticker existiert
+
+        if (this.app?.ticker) {
+            this.app.ticker.add(fadeOutCallback);
+        } else {
+            // Fallback: Destroy immediately if ticker is not available
+            if (lightning.parent) lightning.parent.removeChild(lightning);
+            lightning.destroy();
+            console.warn("Ticker not available for lightning animation.");
+        }
     }
 
     drawLightningSegment(graphics, positions) {
         if (!positions || positions.length < 2) return;
         graphics.moveTo(positions[0].x, positions[0].y);
+        const segmentLength = 15 * (this.gameMap.tileSize / 32); // Adjust jaggedness based on tile size
+        const deviation = 8 * (this.gameMap.tileSize / 32);
+
         for (let i = 1; i < positions.length; i++) {
             const start = positions[i - 1];
             const end = positions[i];
-            if (!start || !end || typeof start.x !== 'number' || typeof end.x !== 'number') continue;
+            // Check if points are valid objects with numbers
+            if (!start || !end || typeof start.x !== 'number' || typeof start.y !== 'number' || typeof end.x !== 'number' || typeof end.y !== 'number') continue;
+
+
             const dx = end.x - start.x;
             const dy = end.y - start.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance < 1) continue;
-            const segmentCount = Math.max(3, Math.floor(distance / 15));
-            const normalX = -dy / distance;
-            const normalY = dx / distance;
-            let currentDrawX = start.x;
-            let currentDrawY = start.y;
-            graphics.moveTo(currentDrawX, currentDrawY);
-            for (let j = 1; j <= segmentCount; j++) {
-                const progress = j / segmentCount;
-                const targetX = start.x + dx * progress;
-                const targetY = start.y + dy * progress;
-                const deviationStrength = 10 * Math.sin(progress * Math.PI);
-                const offsetX = normalX * (Math.random() - 0.5) * deviationStrength;
-                const offsetY = normalY * (Math.random() - 0.5) * deviationStrength;
-                graphics.lineTo(targetX + offsetX, targetY + offsetY);
-            }
-            graphics.lineTo(end.x, end.y);
-        }
-    }
-
-    removeProjectile(index) {
-        if (index >= 0 && index < this.projectiles.length) {
-            const projectile = this.projectiles[index];
-            if (projectile) { // Prüfen, ob das Objekt im Array überhaupt existiert
-                // Grafiken zerstören, falls vorhanden und noch nicht zerstört
-                if (projectile.graphics && !projectile.graphics._destroyed) {
-                    if (projectile.graphics.parent) {
-                        // Versuche sicher zu entfernen
-                        try {
-                            if (this.projectileContainer && this.projectileContainer.removeChild) {
-                                this.projectileContainer.removeChild(projectile.graphics);
-                            }
-                        } catch (e) {
-                            console.warn("Fehler beim Entfernen der Projektilgrafik:", e);
-                        }
-                    }
-                    projectile.graphics.destroy(); // Zerstöre die Grafik auf jeden Fall
-                }
-                // Aus dem Array entfernen - NUR wenn es das erwartete Objekt ist
-                if (this.projectiles[index] === projectile) {
-                    this.projectiles.splice(index, 1);
-                }
-            }
-        } else {
-            // console.warn(`Versuch, Projektil mit ungültigem Index ${index} zu entfernen.`);
-        }
-    }
-
-    calculateFlightDuration(startX, startY, targetX, targetY, speed) {
-        if (speed <= 0) return Infinity;
-        const dx = targetX - startX;
-        const dy = targetY - startY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        // Annahme: speed ist in pixel pro 1/60 Sekunde
-        return (distance / (speed * 60)) * 1000; // Ergebnis in ms
-    }
-
-    updateStandardProjectile(projectile, deltaTime) {
-        // Prüfen ob Grafik existiert und gültig ist
-        if (!projectile.graphics || projectile.graphics._destroyed) return;
-
-        // --- Zielvalidierung ---
-        // Nur prüfen, wenn das Ziel nicht bereits als ungültig markiert wurde
-        if (!projectile.targetInvalidated && projectile.target) {
-            const targetStillValid = projectile.target.health > 0 && projectile.target.sprite && !projectile.target.sprite._destroyed;
-            if (targetStillValid) {
-                // Ziel ist gültig: Aktualisiere die Zielposition
-                projectile.targetX = projectile.target.x;
-                projectile.targetY = projectile.target.y;
-            } else {
-                // Ziel wurde gerade ungültig: Markieren und Zielposition nicht mehr ändern
-                projectile.targetInvalidated = true;
-                // projectile.target = null; // Optional: Referenz löschen
-                // targetX und targetY behalten ihren letzten gültigen Wert bei
-            }
-        }
-        // Wenn projectile.targetInvalidated true ist, wird targetX/Y nicht mehr aktualisiert.
-
-        // --- Bewegung ---
-        // Berechne Richtung zur letzten (bekannten oder aktuellen) Zielposition
-        const dx = projectile.targetX - projectile.x;
-        const dy = projectile.targetY - projectile.y;
-        const distanceToTargetPoint = Math.sqrt(dx * dx + dy * dy);
-        const speed = projectile.speed * deltaTime * 0.06; // Annahme: 60 FPS Basis für speed-Wert
-
-        if (distanceToTargetPoint <= speed) {
-            // Zielpunkt erreicht oder überschritten
-            projectile.x = projectile.targetX;
-            projectile.y = projectile.targetY;
-
-            // WICHTIG: Wenn das Ziel ungültig war UND wir den Punkt erreicht haben,
-            // ohne etwas zu treffen (Kollision wurde noch nicht geprüft!),
-            // sollte das Projektil hier *nicht* direkt entfernt werden.
-            // Die Kollisionsprüfung und der Off-Screen-Check in der Haupt-Update-Schleife
-            // sollten das übernehmen. Wenn es hier nichts trifft, wird es entweder
-            // im nächsten Frame off-screen sein oder durch einen Timeout entfernt werden (falls implementiert).
-
-        } else {
-            // Zum Zielpunkt bewegen
-            const normalizedDx = dx / distanceToTargetPoint;
-            const normalizedDy = dy / distanceToTargetPoint;
-            projectile.x += normalizedDx * speed;
-            projectile.y += normalizedDy * speed;
-        }
-
-        // --- Grafik aktualisieren ---
-        // Winkel für Grafikrotation (zeigt weiterhin auf den Zielpunkt)
-        projectile.angle = Math.atan2(dy, dx);
-
-        // Grafikposition aktualisieren
-        projectile.graphics.x = projectile.x;
-        projectile.graphics.y = projectile.y;
-        this.drawProjectile(projectile); // Neuzeichnen für Effekte etc.
-
-        projectile.timeAlive += deltaTime;
-    }
-
-
-    updateBombProjectile(projectile, deltaTime) {
-        // Prüfen ob Grafik existiert und gültig ist
-        if (!projectile.graphics || projectile.graphics._destroyed) return;
-
-        projectile.timeAlive += deltaTime;
-        const flightDurationMs = projectile.flightDuration || 1000; // Fallback
-        const progress = Math.min(projectile.timeAlive / flightDurationMs, 1);
-
-        projectile.flightProgress = progress;
-
-        // Lineare Interpolation für x/y
-        projectile.x = projectile.startX + (projectile.targetX - projectile.startX) * progress;
-        projectile.y = projectile.startY + (projectile.targetY - projectile.startY) * progress;
-
-        // Parabolische Höhe
-        projectile.flightHeight = projectile.maxHeight * (4 * progress * (1 - progress));
-        projectile.visualY = projectile.y - projectile.flightHeight; // Y-Position für die Grafik
-
-        // Grafik aktualisieren
-        projectile.graphics.x = projectile.x;
-        projectile.graphics.y = projectile.visualY; // Visuelle Position verwenden
-        this.drawProjectile(projectile); // Neuzeichnen für Bogen
-    }
-
-    createExplosion(projectile, enemies) {
-        const explosion = new PIXI.Graphics();
-        if (typeof projectile.x !== 'number' || typeof projectile.y !== 'number') return;
-        explosion.x = projectile.x;
-        explosion.y = projectile.y; // Explosion am Boden (nicht visualY)
-        this.effectsContainer.addChild(explosion);
-
-        let radius = 0;
-        let alpha = 1;
-        const maxRadius = projectile.splashRadius;
-        const duration = 300; // ms
-        let elapsed = 0;
-
-        const animateExplosion = (delta) => {
-            // Check: wurde explosion schon zerstört?
-            if (!explosion || explosion._destroyed) {
-                if (this.app?.ticker) this.app.ticker.remove(animateExplosion);
-                return;
-            }
-
-            elapsed += this.app.ticker.deltaMS;
-            const progress = Math.min(elapsed / duration, 1);
-
-            radius = maxRadius * progress;
-            alpha = 1 - progress * progress;
-
-            explosion.clear();
-            explosion.beginFill(0xFF8800, 0.8 * alpha);
-            explosion.drawCircle(0, 0, radius * 0.5);
-            explosion.endFill();
-            explosion.beginFill(0xFF3300, 0.4 * alpha);
-            explosion.drawCircle(0, 0, radius);
-            explosion.endFill();
-
-            if (progress >= 1) {
-                // Robusteres Entfernen
-                if (explosion.parent) {
-                    this.effectsContainer.removeChild(explosion);
-                }
-                explosion.destroy(); // Immer zerstören
-                if (this.app?.ticker) this.app.ticker.remove(animateExplosion);
-            }
-        };
-
-        this.applySplashDamage(enemies, projectile.x, projectile.y, projectile.splashRadius, projectile.damage);
-        if (this.app?.ticker) this.app.ticker.add(animateExplosion);
-    }
-
-    checkProjectileCollisions(projectile, enemies, projectileIndex) {
-        if (projectile.type === 'bomb') return false; // Bomben explodieren am Zielpunkt, keine Kollision während des Flugs
-
-        let projectileRemoved = false;
-        for (let j = 0; j < enemies.length; j++) {
-            const enemy = enemies[j];
-            // Zusätzliche Prüfung: Ist der Feind überhaupt noch gültig/im Spiel?
-            if (!enemy || enemy.health <= 0 || !enemy.sprite || enemy.sprite._destroyed) continue;
-
-            // Überspringen, wenn dieser Feind von diesem Pierce-Projektil schon getroffen wurde
-            if (projectile.pierce > 0 && projectile.hitEnemies && projectile.hitEnemies.includes(enemy.id)) {
+            if (distance < 1) { // Avoid division by zero or tiny segments
+                graphics.lineTo(end.x, end.y); // Draw straight if too close
                 continue;
             }
 
-            // Kollisionserkennung (Distanz zwischen Mittelpunkten)
-            const dx = enemy.x - projectile.x;
-            const dy = enemy.y - projectile.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            const hitRadius = (projectile.size || 4) + enemy.size; // Standardgröße für Projektil falls nicht definiert
+            const segments = Math.max(2, Math.floor(distance / segmentLength));
+            const normalX = -dy / distance; // Perpendicular vector component
+            const normalY = dx / distance;
 
-            if (distance < hitRadius) {
-                // Treffer!
-                enemy.health -= projectile.damage;
+            graphics.moveTo(start.x, start.y); // Ensure path starts correctly for this segment
 
-                // Slow-Effekt anwenden
-                if (projectile.effect === 'slow' && window.game && window.game.enemyManager) {
-                    window.game.enemyManager.applyEffect(enemy, 'slow', projectile.slowDuration, projectile.slowFactor);
-                }
-
-                // Pierce-Logik
-                if (projectile.pierce > 0) {
-                    if (!projectile.hitEnemies) projectile.hitEnemies = [];
-                    projectile.hitEnemies.push(enemy.id); // Feind-ID merken
-                    projectile.pierce--; // Verbleibende Durchdringungen reduzieren
-
-                    if (projectile.pierce <= 0) {
-                        // Letzte Durchdringung verbraucht -> Projektil entfernen
-                        this.removeProjectile(projectileIndex);
-                        projectileRemoved = true;
-                        break; // Kollisionsschleife für dieses Projektil beenden
-                    }
-                    // Projektil fliegt weiter, nächsten Feind prüfen
-                } else {
-                    // Kein Pierce: Projektil entfernen
-                    this.removeProjectile(projectileIndex);
-                    projectileRemoved = true;
-                    break; // Kollisionsschleife für dieses Projektil beenden
-                }
+            for (let j = 1; j < segments; j++) { // Draw intermediate points
+                const progress = j / segments;
+                const targetX = start.x + dx * progress;
+                const targetY = start.y + dy * progress;
+                // Add random deviation perpendicular to the segment direction
+                // Less deviation near start/end points
+                const deviationScale = (1 - Math.abs(progress - 0.5) * 2);
+                const offsetX = normalX * (Math.random() - 0.5) * deviation * deviationScale;
+                const offsetY = normalY * (Math.random() - 0.5) * deviation * deviationScale;
+                graphics.lineTo(targetX + offsetX, targetY + offsetY);
             }
+            graphics.lineTo(end.x, end.y); // Connect to the final point of the segment
         }
-        return projectileRemoved; // Gibt true zurück, wenn das Projektil in dieser Funktion entfernt wurde
     }
 
-    applySplashDamage(enemies, centerX, centerY, radius, baseDamage) {
-        enemies.forEach(enemy => {
-            // Prüfen ob Feind gültig
-            if (!enemy || enemy.health <= 0 || !enemy.sprite || enemy.sprite._destroyed) return;
-
-            const dx = enemy.x - centerX;
-            const dy = enemy.y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (distance <= radius) {
-                // Schaden nimmt mit Entfernung ab (optional)
-                const damageMultiplier = Math.max(0.1, 1 - (distance / radius)); // Linear von 100% zu 10%
-                const damage = baseDamage * damageMultiplier;
-                enemy.health -= damage;
-            }
-        });
-    }
-
-    // --- Zeichnen ---
-
-    drawTower(tower) {
-        if (!tower.graphics || tower.graphics._destroyed) {
-            // console.error("Tower graphics missing or destroyed for", tower);
+    // --- Utility and Cleanup ---
+    removeProjectile(index) {
+        if (index < 0 || index >= this.projectiles.length) return;
+        const projectile = this.projectiles[index];
+        if (!projectile) {
+            // If the entry exists but is null/undefined, remove it
+            if (this.projectiles[index]) this.projectiles.splice(index, 1);
             return;
         }
-        tower.graphics.clear();
 
-        // Basisgröße (an TileSize angepasst)
-        const baseSize = this.gameMap.tileSize * 0.4; // Ca. 12.8 bei tileSize 32
-
-        switch (tower.type) {
-            case 'basic': this.drawBasicTower(tower, baseSize); break;
-            case 'sniper': this.drawSniperTower(tower, baseSize); break;
-            case 'slow': this.drawSlowTower(tower, baseSize); break;
-            case 'bomb': this.drawBombTower(tower, baseSize); break;
-            case 'lightning': this.drawLightningTower(tower, baseSize); break;
-            default: this.drawDefaultTower(tower, baseSize);
+        // Destroy graphics safely
+        if (projectile.graphics && !projectile.graphics._destroyed) {
+            if (projectile.graphics.parent) {
+                // Attempt to remove from parent first
+                try {
+                    projectile.graphics.parent.removeChild(projectile.graphics);
+                } catch (e) {
+                    console.warn("Failed to remove projectile graphics from parent:", e);
+                }
+            }
+            projectile.graphics.destroy(); // Destroy graphics object
         }
-        this.drawTowerLevelIndicators(tower, baseSize);
-    }
 
-    drawLightningTower(tower, baseSize = 12) {
-        if (!tower.graphics || tower.graphics._destroyed) return;
-        const time = tower.animationState * 4;
-        tower.graphics.beginFill(0x566573);
-        tower.graphics.drawCircle(0, 0, baseSize * 1.1);
-        tower.graphics.endFill();
-        tower.graphics.beginFill(0xEAECEE);
-        tower.graphics.drawCircle(0, 0, baseSize * 0.8);
-        tower.graphics.endFill();
-        const corePulse = baseSize * 0.4 + Math.sin(time) * (baseSize * 0.1);
-        tower.graphics.beginFill(tower.color);
-        tower.graphics.drawCircle(0, 0, corePulse);
-        tower.graphics.endFill();
-        tower.graphics.beginFill(tower.color, 0.3);
-        tower.graphics.drawCircle(0, 0, corePulse + baseSize * 0.2 + Math.sin(time + 1) * (baseSize * 0.1));
-        tower.graphics.endFill();
-        const spikes = 3 + tower.level;
-        const spikeLength = baseSize * 1.2 + tower.level * (baseSize * 0.1);
-        tower.graphics.lineStyle(baseSize * 0.2, 0xABB2B9);
-        for (let i = 0; i < spikes; i++) {
-            const angle = (i * Math.PI * 2 / spikes) + time * 0.5;
-            const startRadius = baseSize * 0.7;
-            tower.graphics.moveTo(Math.cos(angle) * startRadius, Math.sin(angle) * startRadius);
-            tower.graphics.lineTo(Math.cos(angle) * spikeLength, Math.sin(angle) * spikeLength);
-            tower.graphics.beginFill(0x566573);
-            tower.graphics.drawCircle(Math.cos(angle) * spikeLength, Math.sin(angle) * spikeLength, baseSize * 0.2);
-            tower.graphics.endFill();
-            tower.graphics.beginFill(tower.color, 0.7);
-            tower.graphics.drawCircle(Math.cos(angle) * spikeLength, Math.sin(angle) * spikeLength, baseSize * 0.1 + Math.sin(time * 3 + i) * (baseSize * 0.05));
-            tower.graphics.endFill();
-        }
-        if (tower.target && Math.random() > 0.7) {
-            tower.graphics.lineStyle(1 + Math.random(), 0xFFFFFF, 0.8);
-            const sparkAngle = Math.random() * Math.PI * 2;
-            const sparkStartRadius = corePulse + baseSize * 0.1;
-            const sparkEndRadius = sparkStartRadius + baseSize * 0.3 + Math.random() * (baseSize * 0.3);
-            tower.graphics.moveTo(Math.cos(sparkAngle) * sparkStartRadius, Math.sin(sparkAngle) * sparkStartRadius);
-            tower.graphics.lineTo(Math.cos(sparkAngle) * sparkEndRadius, Math.sin(sparkAngle) * sparkEndRadius);
-        }
-        tower.graphics.lineStyle(0);
-    }
-
-    drawBasicTower(tower, baseSize = 12) {
-        if (!tower.graphics || tower.graphics._destroyed) return;
-        tower.graphics.beginFill(tower.color);
-        tower.graphics.drawCircle(0, 0, baseSize);
-        tower.graphics.endFill();
-        tower.graphics.beginFill(0x2980b9);
-        tower.graphics.drawCircle(0, 0, baseSize * 0.7);
-        tower.graphics.endFill();
-        const shots = tower.multishot || 1;
-        const barrelBaseOffset = baseSize * 0.3;
-        const barrelLength = baseSize * 1.3;
-        if (shots === 2) {
-            this.drawTowerBarrel(tower, tower.angle, -barrelBaseOffset, barrelLength);
-            this.drawTowerBarrel(tower, tower.angle, barrelBaseOffset, barrelLength);
-        } else if (shots === 3) {
-            this.drawTowerBarrel(tower, tower.angle, -barrelBaseOffset * 1.5, barrelLength * 1.1);
-            this.drawTowerBarrel(tower, tower.angle, 0, barrelLength * 1.2);
-            this.drawTowerBarrel(tower, tower.angle, barrelBaseOffset * 1.5, barrelLength * 1.1);
+        // Remove from array *after* cleanup, verifying it's the same object
+        if (this.projectiles[index] === projectile) {
+            this.projectiles.splice(index, 1);
         } else {
-            this.drawTowerBarrel(tower, tower.angle, 0, barrelLength);
-        }
-    }
-
-    drawSniperTower(tower, baseSize = 12) {
-        if (!tower.graphics || tower.graphics._destroyed) return;
-        tower.graphics.beginFill(tower.color);
-        tower.graphics.drawCircle(0, 0, baseSize);
-        tower.graphics.endFill();
-        tower.graphics.beginFill(0xc0392b);
-        tower.graphics.drawCircle(0, 0, baseSize * 0.7);
-        tower.graphics.endFill();
-        const barrelLength = baseSize * 1.8 + tower.level * (baseSize * 0.3);
-        const barrelWidth = baseSize * 0.3;
-        tower.graphics.lineStyle(barrelWidth, 0x333333);
-        tower.graphics.moveTo(0, 0);
-        tower.graphics.lineTo(Math.cos(tower.angle) * barrelLength, Math.sin(tower.angle) * barrelLength);
-        tower.graphics.lineStyle(0);
-        if (tower.level === 3 && tower.pierce) {
-            tower.graphics.beginFill(0x444444);
-            tower.graphics.drawRect(
-                Math.cos(tower.angle) * (barrelLength * 0.3) - (baseSize * 0.15),
-                Math.sin(tower.angle) * (barrelLength * 0.3) - (baseSize * 0.15),
-                baseSize * 0.5, baseSize * 0.3
-            );
-            tower.graphics.endFill();
-            if (tower.target) {
-                tower.graphics.lineStyle(1, 0xFF0000, 0.4);
-                tower.graphics.moveTo(Math.cos(tower.angle) * barrelLength, Math.sin(tower.angle) * barrelLength);
-                const targetDx = tower.target.x - tower.x;
-                const targetDy = tower.target.y - tower.y;
-                const targetDist = Math.sqrt(targetDx * targetDx + targetDy * targetDy);
-                const laserRange = Math.min(targetDist, tower.range);
-                const laserEndX = tower.x + (targetDx / targetDist) * laserRange;
-                const laserEndY = tower.y + (targetDy / targetDist) * laserRange;
-                tower.graphics.lineTo(laserEndX - tower.x, laserEndY - tower.y);
-                tower.graphics.beginFill(0xFF0000, 0.8);
-                tower.graphics.drawCircle(laserEndX - tower.x, laserEndY - tower.y, baseSize * 0.1);
-                tower.graphics.endFill();
-            }
-        }
-        tower.graphics.lineStyle(0);
-    }
-
-    drawSlowTower(tower, baseSize = 12) {
-        if (!tower.graphics || tower.graphics._destroyed) return;
-        const frostColor = tower.level >= 3 ? 0xa5f3fc : 0x1abc9c;
-        const time = tower.animationState * 3;
-        const pulsateRadius = baseSize * 0.8 + Math.sin(time) * (baseSize * 0.15);
-        tower.graphics.beginFill(frostColor, 0.2);
-        tower.graphics.drawCircle(0, 0, pulsateRadius + baseSize * 0.5);
-        tower.graphics.endFill();
-        tower.graphics.beginFill(tower.color);
-        tower.graphics.drawPolygon([-baseSize * 0.9, -baseSize * 0.5, baseSize * 0.9, -baseSize * 0.5, baseSize, baseSize * 0.5, 0, baseSize, -baseSize, baseSize * 0.5, -baseSize * 0.9, -baseSize * 0.5]);
-        tower.graphics.endFill();
-        tower.graphics.lineStyle(baseSize * 0.15, frostColor);
-        const spikes = 3 + tower.level;
-        for (let i = 0; i < spikes; i++) {
-            const spikeAngle = -Math.PI / 2 + (i * Math.PI * 2 / spikes) + time * 0.1;
-            const spikeLength = baseSize * 0.7 + tower.level * (baseSize * 0.1);
-            tower.graphics.moveTo(0, 0);
-            tower.graphics.lineTo(Math.cos(spikeAngle) * spikeLength, Math.sin(spikeAngle) * spikeLength);
-        }
-        tower.graphics.beginFill(0xFFFFFF, 0.7);
-        for (let i = 0; i < 5; i++) {
-            const particleAngle = time * 0.5 + (i * Math.PI * 2 / 5);
-            const dist = baseSize + Math.sin(time + i);
-            tower.graphics.drawCircle(Math.cos(particleAngle) * dist, Math.sin(particleAngle) * dist, baseSize * 0.1 + Math.random() * (baseSize * 0.05));
-        }
-        tower.graphics.endFill();
-        tower.graphics.lineStyle(0);
-    }
-
-    drawBombTower(tower, baseSize = 12) {
-        if (!tower.graphics || tower.graphics._destroyed) return;
-        tower.graphics.beginFill(0x784212);
-        tower.graphics.drawCircle(0, 0, baseSize * 1.1);
-        tower.graphics.endFill();
-        tower.graphics.beginFill(tower.color);
-        tower.graphics.drawCircle(0, 0, baseSize);
-        tower.graphics.endFill();
-        tower.graphics.lineStyle(baseSize * 0.2, 0x566573);
-        tower.graphics.drawCircle(0, 0, baseSize * 0.9);
-        tower.graphics.drawCircle(0, 0, baseSize * 0.6);
-        tower.graphics.lineStyle(0);
-        tower.graphics.lineStyle(baseSize * 0.5, 0x34495E);
-        const mortarAngle = -Math.PI / 3;
-        const barrelLength = baseSize * 0.8 + tower.level * (baseSize * 0.1);
-        const barrelStartX = Math.cos(mortarAngle + Math.PI / 2) * (baseSize * 0.1);
-        const barrelStartY = -baseSize * 0.3 + Math.sin(mortarAngle + Math.PI / 2) * (baseSize * 0.1);
-        tower.graphics.moveTo(barrelStartX, barrelStartY);
-        tower.graphics.lineTo(barrelStartX + Math.cos(mortarAngle) * barrelLength, barrelStartY + Math.sin(mortarAngle) * barrelLength);
-        tower.graphics.lineStyle(0);
-        if (Date.now() - tower.lastShot < 100) {
-            tower.graphics.beginFill(0xFFFFFF, 0.5);
-            const smokeOriginX = barrelStartX + Math.cos(mortarAngle) * barrelLength;
-            const smokeOriginY = barrelStartY + Math.sin(mortarAngle) * barrelLength;
-            for (let i = 0; i < 3; ++i) {
-                tower.graphics.drawCircle(smokeOriginX + (Math.random() - 0.5) * (baseSize * 0.5), smokeOriginY + (Math.random() - 0.5) * (baseSize * 0.5), baseSize * 0.1 + Math.random() * (baseSize * 0.15));
-            }
-            tower.graphics.endFill();
-        }
-    }
-
-    drawDefaultTower(tower, baseSize = 12) {
-        if (!tower.graphics || tower.graphics._destroyed) return;
-        tower.graphics.beginFill(tower.color);
-        tower.graphics.drawCircle(0, 0, baseSize);
-        tower.graphics.endFill();
-        this.drawTowerBarrel(tower, tower.angle, 0, baseSize * 1.2);
-    }
-
-    drawTowerBarrel(tower, angle, offset, length = 18) {
-        if (!tower.graphics || tower.graphics._destroyed) return;
-        const barrelWidth = this.gameMap.tileSize * 0.12;
-        length = length || this.gameMap.tileSize * 0.5;
-        offset = offset || 0;
-        const perpX = Math.cos(angle + Math.PI / 2) * offset;
-        const perpY = Math.sin(angle + Math.PI / 2) * offset;
-        const startX = perpX;
-        const startY = perpY;
-        const barrelLength = length + tower.level * (this.gameMap.tileSize * 0.05);
-        tower.graphics.lineStyle(barrelWidth, 0x333333);
-        tower.graphics.moveTo(startX, startY);
-        tower.graphics.lineTo(startX + Math.cos(angle) * barrelLength, startY + Math.sin(angle) * barrelLength);
-        tower.graphics.lineStyle(0);
-    }
-
-    drawTowerLevelIndicators(tower, baseSize = 12) {
-        if (!tower.graphics || tower.graphics._destroyed) return;
-        if (tower.level > 0) {
-            tower.graphics.beginFill(0xFFD700);
-            tower.graphics.lineStyle(1, 0xDAA520);
-            const starSize = baseSize * 0.3;
-            const radius = baseSize + starSize * 0.8;
-            for (let i = 0; i < tower.level; i++) {
-                const angle = -Math.PI / 2 + (i - (tower.level - 1) / 2) * 0.6;
-                const starX = Math.cos(angle) * radius;
-                const starY = Math.sin(angle) * radius;
-                // Globale Funktion drawStar verwenden
-                if (typeof drawStar === 'function') {
-                    drawStar(tower.graphics, starX, starY, 5, starSize, starSize * 0.5, 0);
-                } else {
-                    console.warn("drawStar function not found!");
-                    // Fallback: Einfacher Kreis als Indikator
-                    tower.graphics.drawCircle(starX, starY, starSize * 0.6);
-                }
-            }
-            tower.graphics.lineStyle(0);
-            tower.graphics.endFill();
-        }
-    }
-
-    drawProjectile(projectile) {
-        if (!projectile.graphics || projectile.graphics._destroyed) return;
-        projectile.graphics.clear();
-        switch (projectile.type) {
-            case 'bomb': this.drawBombProjectile(projectile); break;
-            case 'slow': this.drawSlowProjectile(projectile); break;
-            case 'sniper':
-                if (projectile.pierce > 0) this.drawPiercingProjectile(projectile);
-                else this.drawStandardProjectile(projectile);
-                break;
-            case 'lightning': break; // Blitze haben keine dauerhaften Projektile
-            default: this.drawStandardProjectile(projectile);
-        }
-    }
-
-    drawStandardProjectile(projectile) {
-        if (!projectile.graphics || projectile.graphics._destroyed) return;
-        const size = projectile.size || 4;
-        projectile.graphics.beginFill(projectile.color);
-        projectile.graphics.drawCircle(0, 0, size);
-        projectile.graphics.endFill();
-        projectile.graphics.lineStyle(size * 0.8, projectile.color, 0.4);
-        projectile.graphics.moveTo(-Math.cos(projectile.angle) * size * 1.5, -Math.sin(projectile.angle) * size * 1.5);
-        projectile.graphics.lineTo(0, 0);
-        projectile.graphics.lineStyle(0);
-    }
-
-    drawPiercingProjectile(projectile) {
-        if (!projectile.graphics || projectile.graphics._destroyed) return;
-        const size = projectile.size || 3;
-        const angle = projectile.angle;
-        const beamLength = 15 + (projectile.hitEnemies?.length || 0) * 2;
-        projectile.graphics.lineStyle(size, projectile.color, 0.9);
-        projectile.graphics.moveTo(-Math.cos(angle) * beamLength * 0.5, -Math.sin(angle) * beamLength * 0.5);
-        projectile.graphics.lineTo(Math.cos(angle) * beamLength * 0.5, Math.sin(angle) * beamLength * 0.5);
-        projectile.graphics.lineStyle(size * 2.5, projectile.color, 0.2);
-        projectile.graphics.moveTo(-Math.cos(angle) * beamLength * 0.4, -Math.sin(angle) * beamLength * 0.4);
-        projectile.graphics.lineTo(Math.cos(angle) * beamLength * 0.4, Math.sin(angle) * beamLength * 0.4);
-        projectile.graphics.lineStyle(0);
-        projectile.graphics.beginFill(0xFFFFFF, 0.8);
-        const tipX = Math.cos(angle) * beamLength * 0.5;
-        const tipY = Math.sin(angle) * beamLength * 0.5;
-        for (let i = 0; i < 3; i++) {
-            projectile.graphics.drawCircle(tipX + (Math.random() - 0.5) * 4, tipY + (Math.random() - 0.5) * 4, 1 + Math.random());
-        }
-        projectile.graphics.endFill();
-        projectile.graphics.rotation = 0;
-    }
-
-    drawSlowProjectile(projectile) {
-        if (!projectile.graphics || projectile.graphics._destroyed) return;
-        const size = projectile.size || 3;
-        const time = projectile.timeAlive * 0.02;
-        const pulseSize = size + Math.sin(time * 3) * 1.5;
-        projectile.graphics.beginFill(projectile.color, 0.9);
-        projectile.graphics.drawCircle(0, 0, pulseSize);
-        projectile.graphics.endFill();
-        projectile.graphics.beginFill(projectile.color, 0.2);
-        projectile.graphics.drawCircle(0, 0, pulseSize + 4 + Math.sin(time * 2) * 2);
-        projectile.graphics.endFill();
-        projectile.graphics.beginFill(0xFFFFFF, 0.6);
-        for (let i = 1; i <= 3; i++) {
-            const trailPulse = pulseSize - i * 0.8;
-            projectile.graphics.drawCircle(-Math.cos(projectile.angle) * (i * 5), -Math.sin(projectile.angle) * (i * 5), Math.max(0.5, trailPulse * (1 - i * 0.1)));
-        }
-        projectile.graphics.endFill();
-    }
-
-    drawBombProjectile(projectile) {
-        if (!projectile.graphics || projectile.graphics._destroyed) return;
-        const size = projectile.size || 5;
-        const shadowSizeFactor = 1 + projectile.flightHeight * 0.01;
-        const shadowAlpha = 0.4 - projectile.flightHeight * 0.003;
-        projectile.graphics.beginFill(0x000000, Math.max(0.1, shadowAlpha));
-        projectile.graphics.drawEllipse(0, projectile.flightHeight, (size + 2) * shadowSizeFactor, (size + 2) * 0.5 * shadowSizeFactor);
-        projectile.graphics.endFill();
-        projectile.graphics.beginFill(0x404040);
-        projectile.graphics.drawCircle(0, 0, size);
-        projectile.graphics.endFill();
-        projectile.graphics.beginFill(0x606060);
-        projectile.graphics.drawCircle(-size * 0.3, -size * 0.3, size * 0.5);
-        projectile.graphics.endFill();
-        projectile.graphics.lineStyle(2, 0x7f8c8d);
-        const fuseTime = projectile.timeAlive * 0.02;
-        const fuseWiggle = Math.sin(fuseTime * 6) * 2;
-        const fuseLength = 6 + Math.sin(fuseTime) * 2;
-        projectile.graphics.moveTo(0, -size);
-        projectile.graphics.lineTo(fuseWiggle * 1.5, -size - fuseLength);
-        projectile.graphics.beginFill(0xFFA500);
-        projectile.graphics.drawCircle(fuseWiggle * 1.5, -size - fuseLength, 2 + Math.sin(fuseTime * 10) * 0.5);
-        projectile.graphics.endFill();
-        projectile.graphics.beginFill(0xFF0000, 0.7);
-        projectile.graphics.drawCircle(fuseWiggle * 1.5, -size - fuseLength, 1 + Math.sin(fuseTime * 10 + 1) * 0.3);
-        projectile.graphics.endFill();
-        projectile.graphics.lineStyle(0);
-    }
-
-    // --- Turmvorschau und Reichweitenkreise ---
-
-    drawTowerPreview(x, y, type, canPlace) {
-        if (this.previewGraphics && !this.previewGraphics._destroyed) {
-            if (this.previewGraphics.parent) {
-                this.rangeCirclesContainer.removeChild(this.previewGraphics);
-            }
-            this.previewGraphics.destroy();
-        }
-        this.previewGraphics = null; // Wichtig: Referenz löschen
-
-        if (!type) return;
-
-        const towerType = towerTypes[type];
-        if (!towerType) return;
-
-        this.previewGraphics = new PIXI.Graphics();
-        const tileCenter = this.gameMap.getTileCenter(x, y);
-        const rangeColor = canPlace ? 0x00FF00 : 0xFF0000;
-
-        this.previewGraphics.lineStyle(2, rangeColor, 0.4);
-        this.previewGraphics.beginFill(rangeColor, 0.1);
-        this.previewGraphics.drawCircle(tileCenter.x, tileCenter.y, towerType.range);
-        this.previewGraphics.endFill();
-
-        const previewSize = this.gameMap.tileSize * 0.4;
-        this.previewGraphics.beginFill(towerType.color || 0xCCCCCC, 0.6);
-        this.previewGraphics.lineStyle(2, 0x000000, 0.5);
-        this.previewGraphics.drawCircle(tileCenter.x, tileCenter.y, previewSize);
-        this.previewGraphics.endFill();
-        this.previewGraphics.lineStyle(0);
-
-        this.rangeCirclesContainer.addChild(this.previewGraphics);
-    }
-
-    updateRangeCircles() {
-        // Temporäres Array für zu entfernende Kreise
-        const circlesToRemove = [];
-        this.rangeCirclesContainer.children.forEach(child => {
-            // Identifiziere nur die Range-Kreise (nicht die Vorschau)
-            if (child !== this.previewGraphics && child instanceof PIXI.Graphics) {
-                circlesToRemove.push(child);
-            }
-        });
-
-        // Entferne und zerstöre die alten Kreise
-        circlesToRemove.forEach(child => {
-            if (!child._destroyed) { // Nur zerstören, wenn nicht schon zerstört
-                if (child.parent) {
-                    this.rangeCirclesContainer.removeChild(child);
-                }
-                child.destroy();
-            }
-        });
-
-        // Zeichne neue Kreise für ausgewählte/hovernde Türme
-        for (const tower of this.towers) {
-            // Sicherstellen, dass Turm noch gültig ist
-            if (!tower || !tower.container || tower.container._destroyed) continue;
-
-            if (tower.selected || tower.hover) {
-                const rangeCircle = new PIXI.Graphics();
-                rangeCircle.lineStyle(2, 0xFFFFFF, 0.5);
-                rangeCircle.beginFill(0xFFFFFF, 0.05);
-                rangeCircle.drawCircle(tower.x, tower.y, tower.range);
-                rangeCircle.endFill();
-                rangeCircle.lineStyle(0);
-
-                // Füge den Kreis *vor* der Vorschau ein, falls vorhanden
-                if (this.previewGraphics && this.previewGraphics.parent) {
-                    const previewIndex = this.rangeCirclesContainer.getChildIndex(this.previewGraphics);
-                    this.rangeCirclesContainer.addChildAt(rangeCircle, previewIndex);
-                } else {
-                    this.rangeCirclesContainer.addChild(rangeCircle);
-                }
+            // If index shifted, find and remove correct object
+            const actualIndex = this.projectiles.indexOf(projectile);
+            if (actualIndex > -1) {
+                this.projectiles.splice(actualIndex, 1);
             }
         }
     }
@@ -1228,4 +843,543 @@ class TowerManager {
         while (angle > Math.PI) angle -= Math.PI * 2;
         return angle;
     }
-}
+
+    // --- Drawing Functions (Towers & Projectiles) ---
+
+    drawTower(tower) {
+        if (!tower.graphics || tower.graphics._destroyed) return;
+        tower.graphics.clear();
+        const baseSize = this.gameMap.tileSize * 0.4; // Base radius based on tile size
+
+        switch (tower.type) {
+            case 'basic': this.drawBasicTower(tower, baseSize); break;
+            case 'sniper': this.drawSniperTower(tower, baseSize); break;
+            case 'slow': this.drawSlowTower(tower, baseSize); break;
+            case 'bomb': this.drawBombTower(tower, baseSize); break;
+            case 'lightning': this.drawLightningTower(tower, baseSize); break;
+            default: this.drawDefaultTower(tower, baseSize);
+        }
+        this.drawTowerLevelIndicators(tower, baseSize); // Draw stars on top
+    }
+
+    // --- Individual Tower Draw Functions (using baseSize) ---
+    // (Using the versions from the last iteration which seemed visually okay)
+    drawBasicTower(tower, baseSize) {
+        if (!tower.graphics || tower.graphics._destroyed) return;
+        tower.graphics.beginFill(0x5D6D7E); // Base color (grey)
+        tower.graphics.drawCircle(0, 0, baseSize);
+        tower.graphics.endFill();
+        tower.graphics.beginFill(tower.color); // Main color (blue)
+        tower.graphics.drawCircle(0, 0, baseSize * 0.7);
+        tower.graphics.endFill();
+
+        const shots = tower.multishot || 1;
+        const barrelLength = baseSize * 1.2 + tower.level * (baseSize * 0.1);
+        const barrelWidth = baseSize * 0.25;
+        const barrelOffsetY = baseSize * 0.35; // Offset from center for double/triple barrels
+
+        if (shots === 1) {
+            this.drawTowerBarrel(tower, tower.angle, 0, barrelLength, barrelWidth);
+        } else if (shots === 2) {
+            this.drawTowerBarrel(tower, tower.angle, -barrelOffsetY, barrelLength * 0.9, barrelWidth * 0.9);
+            this.drawTowerBarrel(tower, tower.angle, barrelOffsetY, barrelLength * 0.9, barrelWidth * 0.9);
+        } else if (shots >= 3) {
+            this.drawTowerBarrel(tower, tower.angle, 0, barrelLength, barrelWidth); // Center barrel
+            this.drawTowerBarrel(tower, tower.angle, -barrelOffsetY * 1.1, barrelLength * 0.8, barrelWidth * 0.8);
+            this.drawTowerBarrel(tower, tower.angle, barrelOffsetY * 1.1, barrelLength * 0.8, barrelWidth * 0.8);
+        }
+    }
+
+    drawSniperTower(tower, baseSize) {
+        if (!tower.graphics || tower.graphics._destroyed) return;
+        tower.graphics.beginFill(0x78281F); // Dark red base
+        tower.graphics.drawCircle(0, 0, baseSize * 0.9); // Slightly smaller base
+        tower.graphics.endFill();
+        tower.graphics.beginFill(tower.color); // Main color (red)
+        tower.graphics.drawCircle(0, 0, baseSize * 0.6);
+        tower.graphics.endFill();
+
+        const barrelLength = baseSize * 2.0 + tower.level * (baseSize * 0.4); // Longer barrel
+        const barrelWidth = baseSize * 0.25;
+
+        // Barrel
+        tower.graphics.lineStyle(barrelWidth, 0x333333); // Dark grey barrel
+        tower.graphics.moveTo(0, 0);
+        tower.graphics.lineTo(Math.cos(tower.angle) * barrelLength, Math.sin(tower.angle) * barrelLength);
+        tower.graphics.lineStyle(0);
+
+        // Scope (simple rectangle) - added on level 2+
+        if (tower.level >= 1) {
+            // Basic scope representation, needs proper rotation if barrel rotates visually significantly
+            tower.graphics.beginFill(0x444444);
+            // Position along the barrel angle
+            const scopeDist = barrelLength * 0.4;
+            const scopeX = Math.cos(tower.angle) * scopeDist;
+            const scopeY = Math.sin(tower.angle) * scopeDist;
+            const scopeWidth = baseSize * 0.5;
+            const scopeHeight = baseSize * 0.25;
+            // Rotate the rectangle manually (simple approximation)
+            tower.graphics.drawRect(scopeX - scopeWidth / 2, scopeY - scopeHeight / 2, scopeWidth, scopeHeight);
+            tower.graphics.endFill();
+            // Note: Proper rotation of the scope rect would involve rotating the graphics context or calculating corner points.
+        }
+
+
+        // Laser sight (if pierce upgrade is active - level 3 specific)
+        if (tower.pierce && tower.target && tower.level === 3) {
+            tower.graphics.lineStyle(1, 0xFF0000, 0.3); // Thin red laser
+            tower.graphics.moveTo(Math.cos(tower.angle) * barrelLength, Math.sin(tower.angle) * barrelLength); // Start from barrel tip
+            // Draw line towards target, clamped by range
+            const dx = tower.target.x - tower.x;
+            const dy = tower.target.y - tower.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            // Calculate end point relative to tower origin (0,0)
+            const endLaserXRel = (dx / dist) * Math.min(dist, tower.range);
+            const endLaserYRel = (dy / dist) * Math.min(dist, tower.range);
+
+            tower.graphics.lineTo(endLaserXRel, endLaserYRel); // Draw to relative end point
+            tower.graphics.lineStyle(0);
+            // Small dot at the end
+            tower.graphics.beginFill(0xFF0000, 0.7);
+            tower.graphics.drawCircle(endLaserXRel, endLaserYRel, 2);
+            tower.graphics.endFill();
+        }
+    }
+
+    drawSlowTower(tower, baseSize) {
+        if (!tower.graphics || tower.graphics._destroyed) return;
+        const time = tower.animationState * 2; // Slower animation
+        const coreColor = tower.color; // Teal/Cyan
+        const pulseColor = 0xADD8E6; // Light blue pulse
+
+        // Pulsating Base Glow
+        const pulseRadius = baseSize * 1.2 + Math.sin(time) * (baseSize * 0.15);
+        tower.graphics.beginFill(pulseColor, 0.15 + Math.sin(time * 1.5) * 0.05);
+        tower.graphics.drawCircle(0, 0, pulseRadius);
+        tower.graphics.endFill();
+
+        // Main Structure (Hexagon or Snowflake like)
+        tower.graphics.beginFill(coreColor);
+        const points = 6;
+        const mainRadius = baseSize * 0.9;
+        const innerRadius = baseSize * 0.5;
+        for (let i = 0; i < points; i++) {
+            const angle = (i * Math.PI * 2 / points) - Math.PI / 2; // Start from top
+            const angleNext = ((i + 1) * Math.PI * 2 / points) - Math.PI / 2;
+            tower.graphics.moveTo(Math.cos(angle) * mainRadius, Math.sin(angle) * mainRadius);
+            tower.graphics.lineTo(Math.cos((angle + angleNext) / 2) * innerRadius, Math.sin((angle + angleNext) / 2) * innerRadius);
+            tower.graphics.lineTo(Math.cos(angleNext) * mainRadius, Math.sin(angleNext) * mainRadius);
+        }
+        tower.graphics.closePath();
+        tower.graphics.endFill();
+
+        // Center Gem/Core
+        tower.graphics.beginFill(0xFFFFFF);
+        tower.graphics.drawCircle(0, 0, baseSize * 0.3);
+        tower.graphics.endFill();
+        tower.graphics.beginFill(pulseColor, 0.5);
+        tower.graphics.drawCircle(0, 0, baseSize * 0.2 + Math.sin(time * 2) * (baseSize * 0.05));
+        tower.graphics.endFill();
+    }
+
+    drawBombTower(tower, baseSize) {
+        if (!tower.graphics || tower.graphics._destroyed) return;
+        // Base platform (dark grey)
+        tower.graphics.beginFill(0x566573);
+        tower.graphics.drawCircle(0, 0, baseSize * 1.1);
+        tower.graphics.endFill();
+
+        // Main body (bomb color - orange/yellow)
+        tower.graphics.beginFill(tower.color);
+        tower.graphics.drawCircle(0, 0, baseSize);
+        tower.graphics.endFill();
+
+        // Metal bands/details
+        tower.graphics.lineStyle(baseSize * 0.15, 0x797D7F);
+        tower.graphics.drawCircle(0, 0, baseSize * 0.9);
+        tower.graphics.drawCircle(0, 0, baseSize * 0.6);
+        tower.graphics.lineStyle(0);
+
+        // Mortar Tube (short, wide, angled up)
+        const mortarAngle = -Math.PI / 3; // Fixed upward angle
+        const barrelLength = baseSize * 0.9 + tower.level * (baseSize * 0.1);
+        const barrelWidth = baseSize * 0.6; // Wide barrel
+        // Start position slightly offset from center
+        const barrelStartX = Math.cos(mortarAngle + Math.PI / 2) * (baseSize * 0.1);
+        // Position slightly up from the center for visual effect
+        const barrelStartY = Math.sin(mortarAngle + Math.PI / 2) * (baseSize * 0.1) - baseSize * 0.1;
+
+        tower.graphics.lineStyle(barrelWidth, 0x34495E); // Dark tube color
+        tower.graphics.moveTo(barrelStartX, barrelStartY);
+        tower.graphics.lineTo(
+            barrelStartX + Math.cos(mortarAngle) * barrelLength,
+            barrelStartY + Math.sin(mortarAngle) * barrelLength
+        );
+        tower.graphics.lineStyle(0);
+
+        // Smoke effect after firing
+        if (Date.now() - tower.lastShot < 150) { // Show smoke briefly
+            tower.graphics.beginFill(0xFFFFFF, 0.4);
+            const smokeOriginX = barrelStartX + Math.cos(mortarAngle) * barrelLength;
+            const smokeOriginY = barrelStartY + Math.sin(mortarAngle) * barrelLength;
+            for (let i = 0; i < 3; ++i) {
+                tower.graphics.drawCircle(
+                    smokeOriginX + (Math.random() - 0.5) * (baseSize * 0.6), // Wider smoke spread
+                    smokeOriginY + (Math.random() - 0.5) * (baseSize * 0.6),
+                    baseSize * 0.1 + Math.random() * (baseSize * 0.2) // Larger puffs
+                );
+            }
+            tower.graphics.endFill();
+        }
+    }
+
+    drawLightningTower(tower, baseSize) {
+        if (!tower.graphics || tower.graphics._destroyed) return;
+        const time = tower.animationState * 3; // Animation speed
+        const coreColor = tower.color; // Yellow/Gold
+        const elecColor = 0xFFFFFF; // White electricity
+
+        // Base structure (dark metal)
+        tower.graphics.beginFill(0x566573);
+        tower.graphics.drawCircle(0, 0, baseSize);
+        tower.graphics.endFill();
+
+        // Insulators/supports (grey porcelain look)
+        const points = 3 + Math.min(tower.level, 2); // 3 to 5 points based on level
+        const insulatorRadius = baseSize * 0.8;
+        tower.graphics.beginFill(0xEAECEE);
+        for (let i = 0; i < points; i++) {
+            const angle = (i * Math.PI * 2 / points) + time * 0.1;
+            const x = Math.cos(angle) * insulatorRadius;
+            const y = Math.sin(angle) * insulatorRadius;
+            tower.graphics.drawCircle(x, y, baseSize * 0.3);
+        }
+        tower.graphics.endFill();
+
+        // Central Orb (pulsating gold)
+        const orbRadius = baseSize * 0.4 + Math.sin(time * 2) * (baseSize * 0.05);
+        tower.graphics.beginFill(coreColor);
+        tower.graphics.drawCircle(0, 0, orbRadius);
+        tower.graphics.endFill();
+        tower.graphics.beginFill(coreColor, 0.3); // Aura
+        tower.graphics.drawCircle(0, 0, orbRadius + baseSize * 0.2 + Math.sin(time * 1.5 + 1) * (baseSize * 0.1));
+        tower.graphics.endFill();
+
+        // Arcing electricity (random sparks to insulators)
+        if (Math.random() > 0.5) { // Randomly show sparks
+            tower.graphics.lineStyle(1 + Math.random(), elecColor, 0.7);
+            const startAngle = Math.random() * Math.PI * 2;
+            const endPointIndex = Math.floor(Math.random() * points);
+            const endAngle = (endPointIndex * Math.PI * 2 / points) + time * 0.1;
+            const startX = Math.cos(startAngle) * orbRadius;
+            const startY = Math.sin(startAngle) * orbRadius;
+            const endX = Math.cos(endAngle) * insulatorRadius;
+            const endY = Math.sin(endAngle) * insulatorRadius;
+
+            // Simple jagged line
+            tower.graphics.moveTo(startX, startY);
+            tower.graphics.lineTo(startX + (endX - startX) * 0.3 + (Math.random() - 0.5) * 10, startY + (endY - startY) * 0.3 + (Math.random() - 0.5) * 10);
+            tower.graphics.lineTo(startX + (endX - startX) * 0.7 + (Math.random() - 0.5) * 10, startY + (endY - startY) * 0.7 + (Math.random() - 0.5) * 10);
+            tower.graphics.lineTo(endX, endY);
+
+            tower.graphics.lineStyle(0);
+        }
+    }
+
+    drawDefaultTower(tower, baseSize) {
+        if (!tower.graphics || tower.graphics._destroyed) return;
+        tower.graphics.beginFill(tower.color || 0xAAAAAA);
+        tower.graphics.drawCircle(0, 0, baseSize);
+        tower.graphics.endFill();
+        this.drawTowerBarrel(tower, tower.angle, 0, baseSize * 1.2, baseSize * 0.3);
+    }
+
+    drawTowerBarrel(tower, angle, offset, length, width) {
+        if (!tower.graphics || tower.graphics._destroyed) return;
+        const barrelWidth = width || this.gameMap.tileSize * 0.12; // Default width
+        const barrelLength = length || this.gameMap.tileSize * 0.5;
+        const barrelOffset = offset || 0; // Offset perpendicular
+
+        // Calculate start position with offset relative to tower origin (0,0)
+        const perpX = Math.cos(angle + Math.PI / 2) * barrelOffset;
+        const perpY = Math.sin(angle + Math.PI / 2) * barrelOffset;
+        const startX = perpX;
+        const startY = perpY;
+
+        // Calculate end position relative to tower origin
+        const endX = startX + Math.cos(angle) * barrelLength;
+        const endY = startY + Math.sin(angle) * barrelLength;
+
+        // Draw the barrel line
+        tower.graphics.lineStyle(barrelWidth, 0x333333, 1, 0.5); // Dark grey, round caps/joins
+        tower.graphics.moveTo(startX, startY);
+        tower.graphics.lineTo(endX, endY);
+        tower.graphics.lineStyle(0); // Reset line style
+    }
+
+    drawTowerLevelIndicators(tower, baseSize) {
+        if (!tower.graphics || tower.graphics._destroyed || tower.level <= 0) return;
+        if (typeof drawStar !== 'function') {
+            console.warn("drawStar function missing, cannot draw level indicators.");
+            return; // Don't draw if function missing
+        }
+
+        const starSize = baseSize * 0.25;
+        const radius = baseSize + starSize * 0.7; // Position above the base circle
+        const maxStarsToShow = 3; // Cap displayed stars (optional)
+        const starsToDraw = Math.min(tower.level, maxStarsToShow);
+
+
+        tower.graphics.beginFill(0xFFD700); // Gold color
+        tower.graphics.lineStyle(1, 0xDAA520); // Darker gold outline
+
+        for (let i = 0; i < starsToDraw; i++) {
+            // Distribute stars in an arc above the tower
+            const angleOffset = 0.7; // Controls spread
+            const angle = -Math.PI / 2 + (i - (starsToDraw - 1) / 2) * angleOffset;
+            const starX = Math.cos(angle) * radius;
+            const starY = Math.sin(angle) * radius;
+            // Draw the star (ensure drawStar exists globally)
+            drawStar(tower.graphics, starX, starY, 5, starSize, starSize * 0.5, angle + Math.PI / 2);
+        }
+
+        tower.graphics.lineStyle(0);
+        tower.graphics.endFill();
+    }
+
+    // --- Projectile Drawing Functions ---
+    drawProjectile(projectile) {
+        // Robust check for graphics object
+        if (!projectile.graphics || projectile.graphics._destroyed) return;
+        projectile.graphics.clear();
+
+        // Set rotation for directional projectiles BEFORE drawing shapes
+        // Ensure angle is a number
+        if (projectile.type !== 'bomb' && projectile.type !== 'slow' && typeof projectile.angle === 'number') {
+            projectile.graphics.rotation = projectile.angle; // Align with movement direction
+        } else {
+            projectile.graphics.rotation = 0; // No rotation for bombs/slow orbs
+        }
+
+        switch (projectile.type) {
+            case 'bomb': this.drawBombProjectile(projectile); break;
+            case 'slow': this.drawSlowProjectile(projectile); break;
+            case 'sniper':
+                // Use specific drawing for piercing sniper shots if pierce > 0
+                if (projectile.pierce > 0 && towerTypes['sniper'].upgrades.some(up => up.pierce && projectile.damage >= up.damage)) { // Check if it *could* pierce
+                    this.drawSniperProjectile(projectile); // Use the distinct sniper projectile look
+                } else {
+                    this.drawStandardProjectile(projectile); // Fallback or non-piercing sniper shot
+                }
+                break;
+            case 'lightning': break; // No persistent projectile graphic
+            default: this.drawStandardProjectile(projectile); // Basic, etc.
+        }
+    }
+
+    // --- TEMPORARILY SIMPLIFIED DRAWING FOR DEBUGGING ---
+    drawStandardProjectile(projectile) {
+        if (!projectile.graphics || projectile.graphics._destroyed) return;
+        const size = projectile.size || 8; // Larger default size
+        const color = projectile.color || 0xFFFF00; // Bright yellow
+
+        projectile.graphics.beginFill(color, 1.0); // Fully opaque
+        projectile.graphics.lineStyle(1, 0x000000, 0.7); // Black outline
+
+        // Simple Circle for easier visibility
+        projectile.graphics.drawCircle(0, 0, size * 0.7);
+
+        projectile.graphics.endFill();
+        projectile.graphics.lineStyle(0);
+    }
+
+    drawSniperProjectile(projectile) {
+        if (!projectile.graphics || projectile.graphics._destroyed) return;
+        const size = projectile.size || 5; // Thicker
+        const length = 20; // Longer
+        const color = projectile.color || 0xFF00FF; // Bright Magenta
+        const trailColor = 0xFFFFFF; // White
+
+        // Main streak
+        projectile.graphics.lineStyle(size, color, 1.0); // Solid line
+        projectile.graphics.moveTo(length * 0.5, 0); // Draw from center outwards
+        projectile.graphics.lineTo(-length * 0.5, 0);
+
+        // Thin trail/glow
+        projectile.graphics.lineStyle(size * 0.6, trailColor, 0.8); // More opaque trail
+        projectile.graphics.moveTo(length * 0.3, 0);
+        projectile.graphics.lineTo(-length * 0.6, 0);
+
+        // Bright tip flare
+        projectile.graphics.beginFill(trailColor, 1.0);
+        projectile.graphics.drawCircle(length * 0.5, 0, size * 1.2); // Larger flare at the front
+        projectile.graphics.endFill();
+
+        projectile.graphics.lineStyle(0);
+    }
+    // --- END OF SIMPLIFIED DRAWING ---
+
+
+    drawSlowProjectile(projectile) {
+        if (!projectile.graphics || projectile.graphics._destroyed) return;
+        const size = projectile.size || 3;
+        const time = projectile.timeAlive * 0.015; // Animation speed
+        const pulseFactor = 0.15;
+        const pulseSize = size * (1 + Math.sin(time * 3) * pulseFactor); // Pulsating core size
+
+        // Outer fuzzy glow
+        projectile.graphics.beginFill(0xADD8E6, 0.15); // Light blue glow
+        projectile.graphics.drawCircle(0, 0, pulseSize + size * 1.5 + Math.sin(time * 2) * (size * 0.3));
+        projectile.graphics.endFill();
+
+        // Inner core
+        projectile.graphics.beginFill(projectile.color, 0.8); // Main slow color (teal/cyan)
+        projectile.graphics.drawCircle(0, 0, pulseSize);
+        projectile.graphics.endFill();
+
+        // Center highlight
+        projectile.graphics.beginFill(0xFFFFFF, 0.6);
+        projectile.graphics.drawCircle(0, 0, pulseSize * 0.5);
+        projectile.graphics.endFill();
+    }
+
+    drawBombProjectile(projectile) {
+        if (!projectile.graphics || projectile.graphics._destroyed) return;
+        const size = projectile.size || 5;
+        const shadowSizeFactor = 1 + projectile.flightHeight * 0.015; // Shadow grows with height
+        const shadowAlpha = Math.max(0.1, 0.4 - projectile.flightHeight * 0.004); // Shadow fades with height
+
+        // Draw Shadow on the "ground" (y=projectile.y, but drawn at y=projectile.flightHeight relative to visualY)
+        projectile.graphics.beginFill(0x000000, shadowAlpha);
+        // Ellipse position is relative to the graphic's origin (which is at visualY)
+        projectile.graphics.drawEllipse(0, projectile.flightHeight, size * shadowSizeFactor, size * 0.5 * shadowSizeFactor);
+        projectile.graphics.endFill();
+
+        // Draw Bomb Body (at visualY) - origin is (0, 0) for the graphics object
+        projectile.graphics.beginFill(projectile.color || 0x404040); // Use projectile color or default dark grey
+        projectile.graphics.drawCircle(0, 0, size);
+        projectile.graphics.endFill();
+        // Simple highlight
+        projectile.graphics.beginFill(0x606060);
+        projectile.graphics.drawCircle(-size * 0.3, -size * 0.3, size * 0.5);
+        projectile.graphics.endFill();
+
+        // Fuse
+        const fuseTime = projectile.timeAlive * 0.02;
+        const fuseWiggleX = Math.sin(fuseTime * 6) * (size * 0.15);
+        const fuseLength = size * 0.8 + Math.sin(fuseTime * 2) * (size * 0.2);
+        const sparkSize = size * 0.25 + Math.sin(fuseTime * 10) * (size * 0.05);
+
+        projectile.graphics.lineStyle(size * 0.15, 0x7f8c8d); // Grey fuse
+        projectile.graphics.moveTo(0, -size); // Start from top of bomb
+        projectile.graphics.lineTo(fuseWiggleX, -size - fuseLength); // Wiggling end
+        projectile.graphics.lineStyle(0);
+
+        // Fuse Spark
+        projectile.graphics.beginFill(0xFFA500); // Orange spark base
+        projectile.graphics.drawCircle(fuseWiggleX, -size - fuseLength, sparkSize);
+        projectile.graphics.endFill();
+        projectile.graphics.beginFill(0xFF0000, 0.7); // Red inner spark
+        projectile.graphics.drawCircle(fuseWiggleX, -size - fuseLength, sparkSize * 0.6);
+        projectile.graphics.endFill();
+    }
+
+
+    // --- Tower Preview and Range ---
+    drawTowerPreview(x, y, type, canPlace) {
+        // Remove existing preview first robustly
+        if (this.previewGraphics && !this.previewGraphics._destroyed) {
+            if (this.previewGraphics.parent) {
+                try { this.previewGraphics.parent.removeChild(this.previewGraphics); } catch (e) { }
+            }
+            this.previewGraphics.destroy();
+        }
+        this.previewGraphics = null;
+
+        if (!type) return; // No type selected
+
+        const towerType = towerTypes[type];
+        if (!towerType) return;
+
+        this.previewGraphics = new PIXI.Graphics();
+        // Use the potential tile center for positioning preview
+        const tileCenter = this.gameMap.getTileCenter(x, y);
+
+        // Draw Range Circle
+        const rangeColor = canPlace ? 0x00FF00 : 0xFF0000; // Green if placeable, Red if not
+        this.previewGraphics.lineStyle(2, rangeColor, 0.5);
+        this.previewGraphics.beginFill(rangeColor, 0.1);
+        this.previewGraphics.drawCircle(tileCenter.x, tileCenter.y, towerType.range);
+        this.previewGraphics.endFill();
+
+        // Draw Tower Base Preview (semi-transparent)
+        const previewSize = this.gameMap.tileSize * 0.4; // Base size
+        this.previewGraphics.beginFill(towerType.color || 0xCCCCCC, 0.5);
+        this.previewGraphics.lineStyle(1, 0x000000, 0.4); // Thin black outline
+        this.previewGraphics.drawCircle(tileCenter.x, tileCenter.y, previewSize);
+        this.previewGraphics.endFill();
+        this.previewGraphics.lineStyle(0);
+
+        // Add preview to the range circles container (drawn below towers)
+        this.rangeCirclesContainer.addChild(this.previewGraphics);
+    }
+
+    updateRangeCircles() {
+        // Clear existing range circles (but not the preview) robustly
+        const circlesToRemove = this.rangeCirclesContainer.children.filter(child => child !== this.previewGraphics && child instanceof PIXI.Graphics);
+        circlesToRemove.forEach(child => {
+            if (child && !child._destroyed) {
+                if (child.parent) {
+                    try { child.parent.removeChild(child); } catch (e) { }
+                }
+                child.destroy();
+            }
+        });
+        // Ensure container is clean if filter somehow misses things
+        // this.rangeCirclesContainer.children.forEach((child, index) => {
+        //     if (child !== this.previewGraphics && (!child || child._destroyed)) {
+        //         this.rangeCirclesContainer.removeChildAt(index);
+        //     }
+        // });
+
+
+        // Draw new circles for selected/hovered towers
+        for (const tower of this.towers) {
+            if (!tower || !tower.container || tower.container._destroyed) continue;
+
+            // Use selection state from UI if available, otherwise tower internal state
+            const isSelected = window.game?.gameUI?.selectedTowerForUpgrade?.tower === tower;
+            const isHovered = tower.hover; // Assuming tower.hover is updated by UI mousemove
+
+            if (isSelected || isHovered) {
+                const rangeCircle = new PIXI.Graphics();
+                const alpha = isSelected ? 0.6 : 0.4; // More opaque if selected
+                const fillAlpha = isSelected ? 0.1 : 0.05;
+                rangeCircle.lineStyle(2, 0xFFFFFF, alpha);
+                rangeCircle.beginFill(0xFFFFFF, fillAlpha);
+                // Ensure tower coords are numbers before drawing
+                if (typeof tower.x === 'number' && typeof tower.y === 'number' && typeof tower.range === 'number') {
+                    rangeCircle.drawCircle(tower.x, tower.y, tower.range);
+                }
+                rangeCircle.endFill();
+                rangeCircle.lineStyle(0);
+
+                // Add behind preview if preview exists
+                if (this.previewGraphics && this.previewGraphics.parent) {
+                    const previewIndex = this.rangeCirclesContainer.getChildIndex(this.previewGraphics);
+                    // Add circle at the correct position, handling potential errors
+                    try {
+                        this.rangeCirclesContainer.addChildAt(rangeCircle, Math.max(0, previewIndex)); // Add before preview
+                    } catch (e) {
+                        console.warn("Error adding range circle:", e);
+                        this.rangeCirclesContainer.addChild(rangeCircle); // Fallback add to end
+                    }
+                } else {
+                    this.rangeCirclesContainer.addChild(rangeCircle);
+                }
+            }
+        }
+    }
+
+} // End TowerManager Class
+// --- END OF FILE towers.js ---

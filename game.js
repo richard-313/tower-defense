@@ -1,11 +1,23 @@
+// --- START OF FILE game.js ---
 // Main Game Logic
 class Game {
     constructor() {
-        // Container-Größe abrufen
-        const gameContainer = document.getElementById('gameContainer');
-        // *** GEÄNDERT: Breite und Höhe ***
-        const width = 640;
-        const height = 416;
+        // Get wrapper container size (will be set by CSS based on tileSize)
+        const gameCanvasWrapper = document.getElementById('gameCanvasWrapper');
+        const containerElement = document.getElementById('gameContainer'); // Pixi canvas goes here
+
+        // *** Use dimensions from config based on tileSize ***
+        const width = mapConfig.width * mapConfig.tileSize; // e.g., 20 * 40 = 800
+        const height = mapConfig.height * mapConfig.tileSize; // e.g., 13 * 40 = 520
+
+        // Set wrapper size explicitly (optional, CSS can also handle this)
+        if (gameCanvasWrapper) {
+            gameCanvasWrapper.style.width = `${width}px`;
+            gameCanvasWrapper.style.height = `${height}px`;
+        } else {
+            console.warn("Game canvas wrapper not found, using default size.");
+        }
+
 
         // PixiJS-Anwendung erstellen
         this.app = new PIXI.Application({
@@ -15,34 +27,26 @@ class Game {
             resolution: window.devicePixelRatio || 1,
             antialias: true,
             autoDensity: true,
-            // Entfernt: autoResize: true // Manuelles Resizing ist implementiert
         });
 
         // PixiJS-View zum DOM hinzufügen
-        if(gameContainer) {
-            gameContainer.appendChild(this.app.view);
+        if (containerElement) { // Add to the inner container
+            containerElement.appendChild(this.app.view);
         } else {
-            console.error("Game container not found!");
+            console.error("Game container element not found!");
             document.body.appendChild(this.app.view); // Fallback
         }
 
-
-        // Sicherstellen, dass die Canvas die richtige Größe hat
-        this.app.renderer.resize(width, height);
-        this.app.stage.scale.set(1); // Start mit Skalierung 1
 
         // Spielobjekte initialisieren
         this.gameMap = new GameMap(this.app);
         this.towerManager = new TowerManager(this.app, this.gameMap);
         this.enemyManager = new EnemyManager(this.app, this.gameMap.path);
-        // WICHTIG: UI wird *nach* den Managern erstellt, damit Referenzen existieren
+        // UI after managers
         this.gameUI = new GameUI(this.app, this.gameMap, this.towerManager, this.enemyManager);
 
         // Spielzustand
         this.running = false;
-
-        // Leistungsoptimierung
-        this.lastTime = performance.now(); // Verwende performance.now() für präzisere Zeitmessung
         this.gameSpeed = 1.0;
 
         // Spiel starten
@@ -52,84 +56,79 @@ class Game {
     init() {
         this.running = true;
         this.app.ticker.add(delta => this.gameLoop(delta));
-        window.addEventListener('resize', () => this.resize());
-        this.resize(); // Initial resize aufrufen
+        // Resize listener might not be strictly necessary if container size is fixed
+        // window.addEventListener('resize', () => this.resize());
+        // this.resize();
         // Initialisiere Karte und UI mit der Startkarte
-        this.gameUI.changeMap(mapConfig.currentMap);
+        this.gameUI.changeMap(mapConfig.currentMap); // Load default map
+        this.gameUI.setLanguage(currentLanguage); // Apply initial language
     }
 
-    resize() {
-        const gameContainer = document.getElementById('gameContainer');
-        if (!gameContainer) return; // Abbruch, falls Container nicht gefunden
+    // resize() {
+    // // Basic resize if needed, might remove if layout is fixed
+    // const gameCanvasWrapper = document.getElementById('gameCanvasWrapper');
+    // if (!gameCanvasWrapper) return;
+    // const containerWidth = gameCanvasWrapper.clientWidth;
+    // const containerHeight = gameCanvasWrapper.clientHeight;
+    // this.app.renderer.resize(containerWidth, containerHeight);
+    // // No scaling needed if renderer matches container exactly
+    // this.app.stage.scale.set(1);
+    // this.app.stage.position.set(0, 0);
+    // }
 
-        const containerWidth = gameContainer.clientWidth;
-        const containerHeight = gameContainer.clientHeight;
-
-        // Renderer an Containergröße anpassen
-        this.app.renderer.resize(containerWidth, containerHeight);
-
-        // Original-Spielgröße
-        // *** GEÄNDERT: Referenzwerte ***
-        const originalWidth = 640;
-        const originalHeight = 416;
-
-        // Skalierungsfaktor berechnen
-        const scaleX = containerWidth / originalWidth;
-        const scaleY = containerHeight / originalHeight;
-        const scale = Math.min(scaleX, scaleY); // Gleichmäßige Skalierung
-
-        // Skalierung anwenden
-        this.app.stage.scale.set(scale);
-
-        // Zentrieren des Inhalts
-        const scaledWidth = originalWidth * scale;
-        const scaledHeight = originalHeight * scale;
-
-        this.app.stage.position.x = (containerWidth - scaledWidth) / 2;
-        this.app.stage.position.y = (containerHeight - scaledHeight) / 2;
-    }
 
     gameLoop(delta) {
         if (!this.running || this.gameUI.lives <= 0) {
-             // Stoppe den Loop, wenn nicht läuft oder Game Over
-             // Optional: Ticker stoppen? this.app.ticker.stop();
-             return;
+            // Stoppe den Countdown-Timer, wenn das Spiel nicht läuft oder Game Over ist
+            if (this.enemyManager && this.enemyManager.autoStartTimer) {
+                this.enemyManager.cancelWaveTimer();
+                // Stelle sicher, dass der Button-Text ggf. auf "Bereit" zurückgesetzt wird
+                if (this.gameUI && this.gameUI.countdownElement) {
+                    const readyKey = this.gameUI.countdownElement.getAttribute('data-translate-ready') || 'ui.waveReady';
+                    this.gameUI.countdownElement.textContent = t(readyKey);
+                }
+            }
+            // Aktualisiere die UI ein letztes Mal, um den Button-Status (disabled bei Game Over) zu setzen
+            if (this.gameUI && this.gameUI.lives <= 0) {
+                this.gameUI.updateUI(); // Ensure button is disabled on game over
+            }
+            return; // Stop the game loop execution here
         }
-
-        // Verwende Ticker's deltaTime für konsistente Updates bei variabler FPS
-        // delta ist ein Faktor, der auf 60 FPS normalisiert ist (1 bei 60 FPS, 2 bei 30 FPS etc.)
-        // Zeit in ms: this.app.ticker.deltaMS
-        const deltaTime = this.app.ticker.deltaMS * this.gameSpeed; // Zeit in ms, skaliert mit Spielgeschwindigkeit
-
-        // FPS-Begrenzung nicht mehr nötig, da Pixi Ticker das regelt
-
-        // Spielobjekte aktualisieren
-        this.update(deltaTime); // Übergebe die skalierte Zeit in ms
+        const deltaTime = this.app.ticker.deltaMS * this.gameSpeed;
+        this.update(deltaTime);
     }
 
-    update(deltaTime) { // Nimmt jetzt Millisekunden entgegen
-        // Enemy-Manager aktualisieren
-        const waveComplete = this.enemyManager.update(
-            (enemy) => this.gameUI.enemyReachedEnd(enemy), // Callback, wenn Feind entkommt
-            (enemy) => this.gameUI.enemyKilled(enemy)      // Callback, wenn Feind getötet wird
+    update(deltaTime) {
+        // *** HIER DIE ÄNDERUNG ***
+        // Führe EnemyManager Update aus und speichere das Ergebnis
+        const waveJustCompleted = this.enemyManager.update(
+            (enemy) => this.gameUI.enemyReachedEnd(enemy),
+            (enemy) => this.gameUI.enemyKilled(enemy)
         );
 
-        // Tower-Manager aktualisieren
-        // Übergebe deltaTime direkt (Manager sollten mit ms arbeiten)
+        // Aktualisiere Türme
         this.towerManager.update(this.enemyManager.enemies, deltaTime);
 
-        // Wellenabschluss-Logik wird jetzt vom EnemyManager selbst gehandhabt
-        // Der `onWaveComplete` Callback in `startNextWave` löst `scheduleNextWave` aus.
+        // *** NEU: Explizite UI-Aktualisierung, wenn die Welle *gerade eben* abgeschlossen wurde ***
+        if (waveJustCompleted) {
+            // console.log("Game loop detected wave completion, forcing UI update."); // Debugging
+            // Die scheduleNextWave Funktion (die onWaveComplete-Callback ist)
+            // wird ebenfalls updateUI aufrufen, aber dieser Aufruf hier stellt
+            // sicher, dass es sofort nach dem Ende der Gegner-Updates passiert.
+            this.gameUI.updateUI();
+            // Starte auch den visuellen Countdown neu bzw. setze Text auf "Bereit"
+            this.gameUI.updateCountdown();
+        }
+        // --- Ende der Änderung ---
     }
 
-    // Methode zum Einstellen der Spielgeschwindigkeit (für mögliche zukünftige Erweiterungen)
     setGameSpeed(speed) {
-        this.gameSpeed = Math.max(0, speed); // Geschwindigkeit kann nicht negativ sein
+        this.gameSpeed = Math.max(0, speed);
     }
 }
 
-// Spiel initialisieren, wenn die Seite geladen ist
+// Globale game Instanz erstellen
 document.addEventListener('DOMContentLoaded', () => {
-    // Globale game Instanz erstellen (wird von TowerManager/EnemyManager evtl. benötigt)
     window.game = new Game();
 });
+// --- END OF FILE game.js ---

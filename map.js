@@ -1,30 +1,31 @@
+// --- START OF FILE map.js ---
 // Map and Path Generation with PixiJS
 class GameMap {
     constructor(app) {
-        this.app = app; // PixiJS Application
-        this.container = new PIXI.Container(); // Container für die Karte
+        this.app = app;
+        this.container = new PIXI.Container();
+        this.gridContainer = new PIXI.Container(); // For terrain tiles
+        this.decorationContainer = new PIXI.Container(); // For trees, rocks etc.
+        this.pathContainer = new PIXI.Container(); // For path overlay (optional, can be merged)
+        this.markerContainer = new PIXI.Container(); // For entry/exit markers
+
+        this.container.addChild(this.gridContainer);
+        this.container.addChild(this.pathContainer); // Path above grid
+        this.container.addChild(this.decorationContainer); // Decorations above path
+        this.container.addChild(this.markerContainer); // Markers above decorations
+
+        this.app.stage.addChild(this.container);
+        this.container.name = "mapContainer"; // Name for reference
+
         this.grid = [];
         this.path = [];
         this.width = mapConfig.width;
         this.height = mapConfig.height;
-        this.tileSize = mapConfig.tileSize;
+        this.tileSize = mapConfig.tileSize; // Uses value from mapConfig (now 40)
         this.decorations = [];
-        this.decorationContainer = new PIXI.Container(); // Container für Dekorationen
+        this.currentMapDesign = null; // Initialize current map design
 
-        // Grid Container
-        this.gridContainer = new PIXI.Container();
-        this.container.addChild(this.gridContainer);
-        this.container.addChild(this.decorationContainer);
-
-        // Füge den Map-Container zur Stage hinzu
-        this.app.stage.addChild(this.container);
-
-        // Container-Position anpassen
-        this.container.position.set(0, 0);
-        this.container.scale.set(1);
-
-        // Setze die aktuelle Karte
-        this.setMap(mapConfig.currentMap);
+        this.setMap(mapConfig.currentMap); // Load initial map
     }
 
     setMap(mapId) {
@@ -33,374 +34,490 @@ class GameMap {
             return;
         }
 
-        // Lösche vorherige Karte
+        // Clear previous map elements
         this.gridContainer.removeChildren();
+        this.pathContainer.removeChildren();
+        // Destroy previous animated decorations to stop tickers
+        this.decorationContainer.children.forEach(child => {
+            if (child.tickerCallback && this.app?.ticker) {
+                this.app.ticker.remove(child.tickerCallback);
+            }
+            child.destroy();
+        });
         this.decorationContainer.removeChildren();
+        this.markerContainer.removeChildren();
 
-        mapConfig.currentMap = mapId;
+
+        mapConfig.currentMap = mapId; // Update global config
+        // *** Store current map design reference ***
         this.currentMapDesign = mapDesigns[mapId];
-        this.createEmptyGrid();
-        this.generatePath();
-        this.addDecorations();
+        if (!this.currentMapDesign.terrainColors) {
+            console.error(`terrainColors not defined for map ${mapId}`);
+            // Provide default colors as fallback
+            this.currentMapDesign.terrainColors = { empty: 0x7d934c, path: 0xb08968, decorative: 0x5b87a7 };
+        }
+
+
+        this.createEmptyGrid(); // Initialize grid structure
+        this.generatePathAndTiles(); // Create path data AND draw base tiles/path
+        this.addDecorations(); // Add visual decorations
+        this.drawEntranceExit(); // Draw start/end markers
     }
 
     createEmptyGrid() {
         this.grid = [];
-
-        // Erstelle Karte mit leeren Feldern
         for (let y = 0; y < this.height; y++) {
             this.grid[y] = [];
             for (let x = 0; x < this.width; x++) {
                 this.grid[y][x] = {
-                    type: 'empty',
-                    x: x * this.tileSize,
+                    type: 'empty', // Default to 'empty'
+                    x: x * this.tileSize, // Use current tileSize
                     y: y * this.tileSize,
                     width: this.tileSize,
-                    height: this.tileSize
+                    height: this.tileSize,
+                    graphic: null // Store reference to graphic later if needed
                 };
             }
         }
     }
 
-    generatePath() {
-        const { pathCoordinates } = this.currentMapDesign;
+    generatePathAndTiles() {
+        // *** Access terrainColors from the stored design ***
+        const { pathCoordinates, terrainColors } = this.currentMapDesign;
+        if (!terrainColors) {
+            console.error("generatePathAndTiles: terrainColors missing in currentMapDesign!");
+            return; // Prevent further errors
+        }
 
-        // Erstelle Pfad auf der Karte
+
+        // 1. Mark path tiles in the grid
         for (let i = 0; i < pathCoordinates.length - 1; i++) {
             const current = pathCoordinates[i];
             const next = pathCoordinates[i + 1];
+            const isVertical = (current.x === next.x);
+            const start = isVertical ? Math.min(current.y, next.y) : Math.min(current.x, next.x);
+            const end = isVertical ? Math.max(current.y, next.y) : Math.max(current.x, next.x);
 
-            if (current.x === next.x) {
-                // Vertikaler Pfad
-                const startY = Math.min(current.y, next.y);
-                const endY = Math.max(current.y, next.y);
-                for (let y = startY; y <= endY; y++) {
-                    this.grid[y][current.x].type = 'path';
-                }
-            } else {
-                // Horizontaler Pfad
-                const startX = Math.min(current.x, next.x);
-                const endX = Math.max(current.x, next.x);
-                for (let x = startX; x <= endX; x++) {
-                    this.grid[current.y][x].type = 'path';
+            for (let j = start; j <= end; j++) {
+                const x = isVertical ? current.x : j;
+                const y = isVertical ? j : current.y;
+                if (this.grid[y] && this.grid[y][x]) {
+                    this.grid[y][x].type = 'path';
+                } else {
+                    console.warn(`Path coordinate out of bounds: x=${x}, y=${y}`);
                 }
             }
         }
 
-        this.calculatePathPoints();
-        this.drawMap();
+        // 2. Draw all grid tiles based on their type
+        this.gridContainer.removeChildren(); // Clear previous grid graphics
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                const tile = this.grid[y][x];
+                if (!tile) continue; // Should not happen, but safety check
+
+                const tileGraphic = new PIXI.Graphics();
+                tileGraphic.x = tile.x;
+                tileGraphic.y = tile.y;
+
+                const color = (tile.type === 'path') ? terrainColors.path : terrainColors.empty;
+                tileGraphic.beginFill(color);
+                tileGraphic.drawRect(0, 0, tile.width, tile.height);
+                tileGraphic.endFill();
+
+                // Optional: Add subtle grid lines
+                tileGraphic.lineStyle(1, 0x000000, 0.05);
+                tileGraphic.drawRect(0, 0, tile.width, tile.height);
+                tileGraphic.lineStyle(0); // Reset line style
+
+                this.gridContainer.addChild(tileGraphic);
+                tile.graphic = tileGraphic; // Store reference if needed later
+            }
+        }
+
+        // 3. Calculate the actual path points (centers of path tiles)
+        this.calculatePathPoints(pathCoordinates);
     }
 
-    calculatePathPoints() {
+    calculatePathPoints(pathCoordinates) {
         this.path = [];
+        if (!pathCoordinates || pathCoordinates.length === 0) return;
 
-        // Extract path points for enemies to follow
-        const { pathCoordinates } = this.currentMapDesign;
-
-        // Add entry point
+        // Add center of the first tile
         this.path.push({
             x: pathCoordinates[0].x * this.tileSize + this.tileSize / 2,
             y: pathCoordinates[0].y * this.tileSize + this.tileSize / 2
         });
 
-        // Add intermediate points
+        // Add centers of subsequent turn points
         for (let i = 1; i < pathCoordinates.length; i++) {
-            const current = pathCoordinates[i];
-            const prev = pathCoordinates[i - 1];
-
-            // If it's a straight line, add only the end point
-            if (current.x === prev.x || current.y === prev.y) {
-                this.path.push({
-                    x: current.x * this.tileSize + this.tileSize / 2,
-                    y: current.y * this.tileSize + this.tileSize / 2
-                });
-            } else {
-                // For turns, add the corner point first (to make smooth turns)
-                this.path.push({
-                    x: prev.x * this.tileSize + this.tileSize / 2,
-                    y: current.y * this.tileSize + this.tileSize / 2
-                });
-
-                this.path.push({
-                    x: current.x * this.tileSize + this.tileSize / 2,
-                    y: current.y * this.tileSize + this.tileSize / 2
-                });
-            }
+            this.path.push({
+                x: pathCoordinates[i].x * this.tileSize + this.tileSize / 2,
+                y: pathCoordinates[i].y * this.tileSize + this.tileSize / 2
+            });
         }
-    }
-
-    drawMap() {
-        const { terrainColors } = this.currentMapDesign;
-
-        // Leere den Grid-Container
-        this.gridContainer.removeChildren();
-
-        // Zeichne die Basis-Terrain
-        for (let y = 0; y < this.height; y++) {
-            for (let x = 0; x < this.width; x++) {
-                const tile = this.grid[y][x];
-
-                // Erstelle eine neue Graphics-Instanz für jede Kachel
-                const tileGraphic = new PIXI.Graphics();
-                tileGraphic.x = tile.x;
-                tileGraphic.y = tile.y;
-
-                if (tile.type === 'path') {
-                    // Pfad zeichnen
-                    tileGraphic.beginFill(terrainColors.path);
-                } else {
-                    // Normales Terrain zeichnen
-                    tileGraphic.beginFill(terrainColors.empty);
-                }
-
-                // Kachel zeichnen
-                tileGraphic.drawRect(0, 0, tile.width, tile.height);
-                tileGraphic.endFill();
-
-                // Optional: Gitternetzlinien zeichnen
-                tileGraphic.lineStyle(1, 0x000000, 0.1);
-                tileGraphic.drawRect(0, 0, tile.width, tile.height);
-
-                // Füge die Kachel zum Container hinzu
-                this.gridContainer.addChild(tileGraphic);
-            }
-        }
-
-        // Markiere Eingang und Ausgang
-        this.drawEntranceExit();
     }
 
     addDecorations() {
-        // Leere den Dekorations-Container
+        // Ensure previous tickers are stopped and children removed
+        this.decorationContainer.children.forEach(child => {
+            if (child.tickerCallback && this.app?.ticker) {
+                this.app.ticker.remove(child.tickerCallback);
+            }
+        });
         this.decorationContainer.removeChildren();
+        this.decorations = []; // Reset decorations array
 
-        // Erstelle Dekorationen basierend auf dem aktuellen Map-Design
+        if (!this.currentMapDesign || !this.currentMapDesign.decorations) return; // Check if design and decorations exist
+
+
         this.decorations = this.currentMapDesign.decorations.map(dec => {
             const x = dec.x * this.tileSize + this.tileSize / 2;
             const y = dec.y * this.tileSize + this.tileSize / 2;
+            let decorationGraphic = null;
 
             switch (dec.type) {
-                case 'tree':
-                    this.drawTree(x, y);
-                    break;
-                case 'rock':
-                    this.drawRock(x, y);
-                    break;
-                case 'water':
-                    this.drawWater(x, y);
-                    break;
-                case 'swamp':
-                    this.drawSwamp(x, y);
-                    break;
-                case 'deadTree':
-                    this.drawDeadTree(x, y);
+                case 'tree': decorationGraphic = this.drawTree(x, y); break;
+                case 'rock': decorationGraphic = this.drawRock(x, y); break;
+                case 'water': decorationGraphic = this.drawWater(x, y); break;
+                case 'swamp': decorationGraphic = this.drawSwamp(x, y); break;
+                case 'deadTree': decorationGraphic = this.drawDeadTree(x, y); break;
+                default:
+                    console.warn(`Unknown decoration type: ${dec.type}`);
                     break;
             }
 
-            return {
-                type: dec.type,
-                x: x,
-                y: y
-            };
-        });
+            if (decorationGraphic) {
+                this.decorationContainer.addChild(decorationGraphic);
+                return { type: dec.type, x: x, y: y, graphic: decorationGraphic };
+            }
+            return null;
+        }).filter(d => d !== null);
     }
+
+    // --- Decoration Drawing Functions ---
 
     drawTree(x, y) {
         const tree = new PIXI.Graphics();
+        const scale = this.tileSize / 40; // Scale factor relative to original design tileSize 40 (or use 32 if that was original)
+        const trunkWidth = 6 * scale;
+        const trunkHeight = 15 * scale;
+        const crownWidth1 = 30 * scale;
+        const crownY1 = -25 * scale;
+        const crownWidth2 = 24 * scale;
+        const crownY2 = -18 * scale;
+        const crownBottomY = 0; // Base of second crown part relative to center
 
-        // Baumstamm
-        tree.beginFill(0x8B4513);
-        tree.drawRect(x - 3, y - 5, 6, 15);
+        tree.beginFill(0x8B4513); // Brown trunk
+        tree.drawRect(-trunkWidth / 2, -trunkHeight / 2, trunkWidth, trunkHeight);
         tree.endFill();
 
-        // Baumkrone
-        tree.beginFill(0x2E7D32);
-
-        // Obere Dreiecksform
-        tree.moveTo(x, y - 25);
-        tree.lineTo(x - 15, y - 5);
-        tree.lineTo(x + 15, y - 5);
+        tree.beginFill(0x2E7D32); // Dark green foliage
+        tree.moveTo(0, crownY1);
+        tree.lineTo(-crownWidth1 / 2, -trunkHeight / 2);
+        tree.lineTo(crownWidth1 / 2, -trunkHeight / 2);
         tree.closePath();
         tree.endFill();
 
-        // Untere Dreiecksform
-        tree.beginFill(0x2E7D32);
-        tree.moveTo(x, y - 18);
-        tree.lineTo(x - 12, y);
-        tree.lineTo(x + 12, y);
+        tree.beginFill(0x388E3C); // Slightly lighter green
+        tree.moveTo(0, crownY2);
+        tree.lineTo(-crownWidth2 / 2, crownBottomY);
+        tree.lineTo(crownWidth2 / 2, crownBottomY);
         tree.closePath();
         tree.endFill();
 
-        this.decorationContainer.addChild(tree);
+        tree.position.set(x, y);
+        return tree;
     }
 
     drawRock(x, y) {
         const rock = new PIXI.Graphics();
+        const scale = this.tileSize / 40;
+        const rockWidth = 12 * scale;
+        const rockHeight = 8 * scale;
 
-        // Felsen
-        rock.beginFill(0x565150);
-        rock.drawEllipse(0, 0, 12, 8);
+        // *** Access color from current map design ***
+        const rockColor = this.currentMapDesign.terrainColors?.decorative || 0x8a7f77; // Fallback grey
+
+        rock.beginFill(rockColor);
+        rock.drawEllipse(0, 0, rockWidth, rockHeight);
         rock.endFill();
 
-        // Highlight
-        rock.beginFill(0xFFFFFF, 0.2);
-        rock.drawEllipse(-3, -2, 4, 2);
+        rock.beginFill(0xFFFFFF, 0.15);
+        rock.drawEllipse(-rockWidth * 0.2, -rockHeight * 0.2, rockWidth * 0.3, rockHeight * 0.2);
         rock.endFill();
 
-        rock.x = x;
-        rock.y = y;
-        this.decorationContainer.addChild(rock);
+        rock.position.set(x, y);
+        return rock;
     }
 
     drawWater(x, y) {
         const water = new PIXI.Graphics();
+        const scale = this.tileSize / 40;
+        const waterWidth = 16 * scale;
+        const waterHeight = 11 * scale;
+        // *** Access color from current map design ***
+        const waterColor = this.currentMapDesign.terrainColors?.decorative || 0x5b87a7; // Fallback blue
 
-        // Wasserfläche
-        water.beginFill(0x5b87a7);
-        water.drawEllipse(0, 0, 15, 10);
-        water.endFill();
+        const drawWaterShape = (gfx, time) => {
+            if (!gfx || gfx._destroyed) return; // Check if graphics object is valid
+            const waveOffset = Math.sin(time * 1.5) * (this.tileSize / 20);
+            const scaleFactor = 1 + Math.sin(time * 1.2) * 0.02;
+            gfx.clear();
+            gfx.beginFill(waterColor); // Use map's decorative color
+            gfx.drawEllipse(0, 0, waterWidth * scaleFactor, waterHeight * scaleFactor);
+            gfx.endFill();
 
-        // Spiegelung
-        water.beginFill(0xFFFFFF, 0.3);
-        water.drawEllipse(0, -2, 6, 3);
-        water.endFill();
+            gfx.beginFill(0xFFFFFF, 0.2);
+            gfx.drawEllipse(waveOffset, -waterHeight * 0.2, waterWidth * 0.4, waterHeight * 0.25);
+            gfx.endFill();
+        };
 
-        water.x = x;
-        water.y = y;
+        drawWaterShape(water, 0); // Initial draw
+        water.position.set(x, y);
 
-        // Animation für Wasser
-        const waterAnim = water;
-        this.app.ticker.add(() => {
-            const time = Date.now() / 1000;
-            const waveOffset = Math.sin(time) * 2;
+        const tickerCallback = () => {
+            // Make sure the graphic and its parent still exist
+            if (!water || water._destroyed || !water.parent) {
+                if (this.app?.ticker) this.app.ticker.remove(tickerCallback);
+                return;
+            }
+            drawWaterShape(water, Date.now() / 1000);
+        };
+        // Add ticker only if app and ticker exist
+        if (this.app?.ticker) {
+            this.app.ticker.add(tickerCallback);
+            water.tickerCallback = tickerCallback; // Store reference to remove later
+        } else {
+            console.warn("Cannot add water animation: ticker not available.");
+        }
 
-            waterAnim.clear();
 
-            // Wasserfläche neu zeichnen
-            waterAnim.beginFill(0x5b87a7);
-            waterAnim.drawEllipse(0, 0, 15, 10);
-            waterAnim.endFill();
-
-            // Spiegelung neu zeichnen
-            waterAnim.beginFill(0xFFFFFF, 0.3);
-            waterAnim.drawEllipse(waveOffset, -2, 6, 3);
-            waterAnim.endFill();
-        });
-
-        this.decorationContainer.addChild(water);
+        return water;
     }
 
     drawSwamp(x, y) {
         const swamp = new PIXI.Graphics();
+        const scale = this.tileSize / 40;
+        const swampWidth = 15 * scale;
+        const swampHeight = 10 * scale;
+        // *** Access colors from current map design ***
+        const swampColor = this.currentMapDesign.terrainColors?.decorative || 0x3c4821; // Fallback dark green
+        const pathColor = this.currentMapDesign.terrainColors?.path || 0x4a5b44; // Fallback muddy
 
-        // Sumpf-Pfütze
-        swamp.beginFill(0x3c4821);
-        swamp.drawEllipse(0, 0, 15, 10);
-        swamp.endFill();
+        const drawSwampShape = (gfx, time) => {
+            if (!gfx || gfx._destroyed) return;
+            gfx.clear();
+            gfx.beginFill(swampColor);
+            gfx.drawEllipse(0, 0, swampWidth, swampHeight);
+            gfx.endFill();
 
-        // Blasen
-        swamp.beginFill(0xFFFFFF, 0.2);
-        swamp.drawCircle(-5, 0, 2);
-        swamp.drawCircle(6, 0, 1.5);
-        swamp.endFill();
+            gfx.beginFill(pathColor, 0.3); // Use path color for murkiness
+            gfx.drawEllipse(Math.sin(time * 0.8) * 2 * scale, Math.cos(time * 1.1) * 1.5 * scale, swampWidth * 0.8, swampHeight * 0.7);
+            gfx.endFill();
 
-        swamp.x = x;
-        swamp.y = y;
+            gfx.beginFill(0xFFFFFF, 0.15);
+            const bubble1X = -swampWidth * 0.3 + Math.sin(time * 1.8) * 2 * scale;
+            const bubble1Y = Math.sin(time * 2.5) * (swampHeight * 0.3);
+            const bubble1R = (1.5 + Math.sin(time * 3) * 0.5) * scale;
 
-        // Animation für Blasen
-        const swampAnim = swamp;
-        this.app.ticker.add(() => {
-            const time = Date.now() / 1000;
-            const bubbleOffset = Math.sin(time * 2) * 3;
+            const bubble2X = swampWidth * 0.3 + Math.sin(time * 1.5 + 2) * 1.5 * scale;
+            const bubble2Y = Math.cos(time * 2.1) * (swampHeight * 0.25);
+            const bubble2R = (1 + Math.sin(time * 2.8 + 1) * 0.4) * scale;
 
-            swampAnim.clear();
+            if (bubble1R > 0.5 * scale) gfx.drawCircle(bubble1X, bubble1Y, bubble1R);
+            if (bubble2R > 0.5 * scale) gfx.drawCircle(bubble2X, bubble2Y, bubble2R);
+            gfx.endFill();
+        };
 
-            // Sumpf-Pfütze neu zeichnen
-            swampAnim.beginFill(0x3c4821);
-            swampAnim.drawEllipse(0, 0, 15, 10);
-            swampAnim.endFill();
+        drawSwampShape(swamp, 0); // Initial draw
+        swamp.position.set(x, y);
 
-            // Blasen neu zeichnen
-            swampAnim.beginFill(0xFFFFFF, 0.2);
-            swampAnim.drawCircle(-5, bubbleOffset, 2);
-            swampAnim.drawCircle(6, -bubbleOffset, 1.5);
-            swampAnim.endFill();
-        });
+        const tickerCallback = () => {
+            if (!swamp || swamp._destroyed || !swamp.parent) {
+                if (this.app?.ticker) this.app.ticker.remove(tickerCallback);
+                return;
+            }
+            drawSwampShape(swamp, Date.now() / 800);
+        };
+        if (this.app?.ticker) {
+            this.app.ticker.add(tickerCallback);
+            swamp.tickerCallback = tickerCallback; // Store reference
+        } else {
+            console.warn("Cannot add swamp animation: ticker not available.");
+        }
 
-        this.decorationContainer.addChild(swamp);
+        return swamp;
     }
 
     drawDeadTree(x, y) {
         const deadTree = new PIXI.Graphics();
+        const scale = this.tileSize / 40;
+        const trunkWidth = 4 * scale;
+        const trunkHeight = 25 * scale;
+        const branchThickness = Math.max(1, 2 * scale); // Ensure at least 1px thick
+        const branchColor = 0x5D4037;
 
-        // Baumstamm
-        deadTree.beginFill(0x5D4037);
-        deadTree.drawRect(x - 2, y - 15, 4, 25);
+        deadTree.beginFill(branchColor);
+        deadTree.drawRect(-trunkWidth / 2, -trunkHeight + (trunkHeight * 0.2), trunkWidth, trunkHeight);
         deadTree.endFill();
 
-        // Äste
-        deadTree.lineStyle(2, 0x5D4037);
+        deadTree.lineStyle(branchThickness, branchColor);
+        deadTree.moveTo(0, -trunkHeight * 0.6);
+        deadTree.lineTo(trunkWidth * 2.5, -trunkHeight * 0.9);
+        deadTree.moveTo(0, -trunkHeight * 0.4);
+        deadTree.lineTo(-trunkWidth * 3, -trunkHeight * 0.7);
+        deadTree.moveTo(0, -trunkHeight * 0.8);
+        deadTree.lineTo(trunkWidth * 1, -trunkHeight * 1.1);
+        deadTree.lineStyle(0);
 
-        // Ast 1
-        deadTree.moveTo(x, y - 10);
-        deadTree.lineTo(x + 8, y - 18);
-
-        // Ast 2
-        deadTree.moveTo(x, y - 5);
-        deadTree.lineTo(x - 10, y - 12);
-
-        this.decorationContainer.addChild(deadTree);
+        deadTree.position.set(x, y);
+        return deadTree;
     }
 
+    // --- UPDATED Entrance/Exit Markers ---
     drawEntranceExit() {
-        // Eingang - grüner Marker
+        this.markerContainer.removeChildren();
+        if (!this.path || this.path.length === 0) return;
+
+        // --- Entrance Marker (Wooden Sign/Banner - unchanged) ---
         const entryPoint = this.path[0];
-        const entryX = Math.floor(entryPoint.x / this.tileSize) * this.tileSize;
-        const entryY = Math.floor(entryPoint.y / this.tileSize) * this.tileSize;
-
+        const entryTileX = Math.floor(entryPoint.x / this.tileSize);
+        const entryTileY = Math.floor(entryPoint.y / this.tileSize);
         const entryMarker = new PIXI.Graphics();
-        entryMarker.beginFill(0x00C800, 0.5);
-        entryMarker.drawRect(0, 0, this.tileSize, this.tileSize);
-        entryMarker.endFill();
-        entryMarker.x = entryX;
-        entryMarker.y = entryY;
+        const entryCenterX = entryTileX * this.tileSize + this.tileSize / 2;
+        const entryCenterY = entryTileY * this.tileSize + this.tileSize / 2;
+        const scale = this.tileSize / 40; // Scale factor
 
-        this.gridContainer.addChild(entryMarker);
+        const woodColor = 0x8B4513; // Brown
+        const bannerColor = 0xD2B48C; // Tan/Linen
+        const darkWoodColor = 0x5D4037;
 
-        // Ausgang - roter Marker
-        const exitPoint = this.path[this.path.length - 1];
-        const exitX = Math.floor(exitPoint.x / this.tileSize) * this.tileSize;
-        const exitY = Math.floor(exitPoint.y / this.tileSize) * this.tileSize;
+        const poleWidth = 5 * scale;
+        const poleHeight = 35 * scale;
+        const bannerWidth = 25 * scale;
+        const bannerHeight = 20 * scale;
+        const bannerTopOffset = -15 * scale; // How far up the banner starts
 
-        const exitMarker = new PIXI.Graphics();
-        exitMarker.beginFill(0xC80000, 0.5);
-        exitMarker.drawRect(0, 0, this.tileSize, this.tileSize);
-        exitMarker.endFill();
-        exitMarker.x = exitX;
-        exitMarker.y = exitY;
-
-        this.gridContainer.addChild(exitMarker);
-    }
-
-    isTileOccupied(x, y) {
-        // Prüft, ob die Kachel ein Pfad ist
-        const tileX = Math.floor(x / this.tileSize);
-        const tileY = Math.floor(y / this.tileSize);
-
-        if (tileX < 0 || tileX >= this.width || tileY < 0 || tileY >= this.height) {
-            return true; // Außerhalb der Grenzen gilt als belegt
+        // Determine entry direction
+        let entryDir = 'unknown';
+        if (this.path.length > 1) {
+            const nextPoint = this.path[1];
+            if (nextPoint.x > entryPoint.x) entryDir = 'left';
+            else if (nextPoint.x < entryPoint.x) entryDir = 'right';
+            else if (nextPoint.y > entryPoint.y) entryDir = 'top';
+            else if (nextPoint.y < entryPoint.y) entryDir = 'bottom';
         }
 
-        return this.grid[tileY][tileX].type === 'path';
+        let poleX = entryCenterX - poleWidth / 2;
+        let poleY = entryCenterY - poleHeight / 2;
+        let bannerX = poleX + poleWidth;
+        let bannerY = poleY + bannerTopOffset;
+
+        switch (entryDir) {
+            case 'left': poleX = entryCenterX - this.tileSize / 2 - poleWidth; poleY = entryCenterY - poleHeight / 2; bannerX = poleX + poleWidth; bannerY = poleY + bannerTopOffset; break;
+            case 'right': poleX = entryCenterX + this.tileSize / 2; poleY = entryCenterY - poleHeight / 2; bannerX = poleX - bannerWidth; bannerY = poleY + bannerTopOffset; break;
+            case 'top': poleX = entryCenterX - poleWidth / 2; poleY = entryCenterY - this.tileSize / 2 - poleHeight; bannerX = poleX + poleWidth; bannerY = poleY + poleHeight * 0.2; break;
+            case 'bottom': poleX = entryCenterX - poleWidth / 2; poleY = entryCenterY + this.tileSize / 2; bannerX = poleX + poleWidth; bannerY = poleY + bannerTopOffset; break;
+            default: poleX = entryCenterX - poleWidth / 2; poleY = entryCenterY - poleHeight / 2; bannerX = poleX + poleWidth; bannerY = poleY + bannerTopOffset;
+        }
+
+        entryMarker.beginFill(woodColor).lineStyle(1, darkWoodColor).drawRect(poleX, poleY, poleWidth, poleHeight).endFill().lineStyle(0);
+        entryMarker.beginFill(bannerColor).lineStyle(1, woodColor);
+        entryMarker.moveTo(bannerX, bannerY).lineTo(bannerX + bannerWidth, bannerY).lineTo(bannerX + bannerWidth, bannerY + bannerHeight * 0.8).lineTo(bannerX + bannerWidth / 2, bannerY + bannerHeight).lineTo(bannerX, bannerY + bannerHeight * 0.8).closePath();
+        entryMarker.endFill().lineStyle(0);
+        entryMarker.beginFill(darkWoodColor);
+        const arrowStartX = bannerX + bannerWidth / 2; const arrowStartY = bannerY + bannerHeight * 0.3; const arrowSize = 6 * scale;
+        entryMarker.moveTo(arrowStartX - arrowSize / 2, arrowStartY).lineTo(arrowStartX + arrowSize / 2, arrowStartY).lineTo(arrowStartX, arrowStartY + arrowSize).closePath();
+        entryMarker.endFill();
+        this.markerContainer.addChild(entryMarker);
+
+
+        // --- Exit Marker (Wooden Door) ---
+        const exitPoint = this.path[this.path.length - 1];
+        const exitTileX = Math.floor(exitPoint.x / this.tileSize);
+        const exitTileY = Math.floor(exitPoint.y / this.tileSize);
+        const exitMarker = new PIXI.Graphics();
+        const exitCenterX = exitTileX * this.tileSize + this.tileSize / 2;
+        const exitCenterY = exitTileY * this.tileSize + this.tileSize / 2;
+        exitMarker.position.set(exitCenterX, exitCenterY); // Center the graphic on the tile
+
+        // Colors
+        const doorWoodColor = 0x966F33; // Medium brown wood
+        const plankLineColor = 0x654321; // Darker brown for lines/grain
+        const metalColor = 0x777777; // Grey metal for hinges/handle
+        const darkMetalColor = 0x444444;
+
+        // Sizes
+        const doorWidth = 28 * scale;
+        const doorHeight = 35 * scale;
+        const doorCornerRadius = 3 * scale; // Slightly rounded top corners
+        const plankWidth = doorWidth / 3; // Divide into 3 planks
+        const plankLineWidth = Math.max(1, 1.5 * scale);
+        const hingeWidth = 5 * scale;
+        const hingeHeight = 8 * scale;
+        const handleRadius = 3 * scale;
+
+        // Draw Door Base (Rounded Rectangle)
+        exitMarker.beginFill(doorWoodColor);
+        exitMarker.lineStyle(plankLineWidth, plankLineColor); // Outline
+        exitMarker.drawRoundedRect(-doorWidth / 2, -doorHeight / 2, doorWidth, doorHeight, doorCornerRadius);
+        exitMarker.endFill();
+        exitMarker.lineStyle(0);
+
+        // Draw Planks (Vertical Lines)
+        exitMarker.lineStyle(plankLineWidth, plankLineColor);
+        // Plank 1 separator
+        exitMarker.moveTo(-doorWidth / 2 + plankWidth, -doorHeight / 2);
+        exitMarker.lineTo(-doorWidth / 2 + plankWidth, doorHeight / 2);
+        // Plank 2 separator
+        exitMarker.moveTo(-doorWidth / 2 + 2 * plankWidth, -doorHeight / 2);
+        exitMarker.lineTo(-doorWidth / 2 + 2 * plankWidth, doorHeight / 2);
+        exitMarker.lineStyle(0);
+
+        // Draw Metal Hinges (Simple Rectangles)
+        const hingeYOffset = doorHeight * 0.3;
+        exitMarker.beginFill(metalColor);
+        exitMarker.lineStyle(1, darkMetalColor);
+        // Top Hinge
+        exitMarker.drawRect(-doorWidth / 2 - hingeWidth * 0.2, -hingeYOffset - hingeHeight / 2, hingeWidth, hingeHeight);
+        // Bottom Hinge
+        exitMarker.drawRect(-doorWidth / 2 - hingeWidth * 0.2, hingeYOffset - hingeHeight / 2, hingeWidth, hingeHeight);
+        exitMarker.endFill();
+        exitMarker.lineStyle(0);
+
+        // Draw Handle (Simple Circle)
+        const handleXOffset = doorWidth * 0.35;
+        exitMarker.beginFill(metalColor);
+        exitMarker.lineStyle(1, darkMetalColor);
+        exitMarker.drawCircle(handleXOffset, 0, handleRadius); // Centered vertically
+        exitMarker.endFill();
+        // Small inner circle for detail
+        exitMarker.beginFill(darkMetalColor).drawCircle(handleXOffset, 0, handleRadius * 0.4).endFill();
+        exitMarker.lineStyle(0);
+
+        this.markerContainer.addChild(exitMarker);
+    }
+
+
+    // --- Remaining GameMap methods ---
+    isTileOccupied(x, y) {
+        const tileX = Math.floor(x / this.tileSize);
+        const tileY = Math.floor(y / this.tileSize);
+        if (tileX < 0 || tileX >= this.width || tileY < 0 || tileY >= this.height) {
+            return true;
+        }
+        // Safely access grid cell
+        return this.grid[tileY]?.[tileX]?.type === 'path';
     }
 
     getTileCenter(x, y) {
         const tileX = Math.floor(x / this.tileSize);
         const tileY = Math.floor(y / this.tileSize);
-
         return {
             x: tileX * this.tileSize + this.tileSize / 2,
             y: tileY * this.tileSize + this.tileSize / 2
         };
     }
 }
+// --- END OF FILE map.js ---

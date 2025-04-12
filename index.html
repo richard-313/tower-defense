@@ -6,86 +6,120 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Medieval Tower Defense</title>
+    <link rel="icon" type="image/png" href="favicon.png">
     <link rel="stylesheet" href="styles.css">
-    <!-- PixiJS einbinden -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
-    <!-- Globale Hilfsfunktionen (z.B. drawStar) -->
     <script src="utils.js"></script>
+    <!-- Load Translations Early -->
+    <script src="translations.js"></script>
 </head>
 
 <body>
     <div class="game-container">
-        <h1>Medieval Defense</h1>
-        <div class="map-selection">
-            <button id="map1" class="map-button selected">Grüntal</button>
-            <button id="map2" class="map-button">Felspass</button>
-            <button id="map3" class="map-button">Sumpfland</button>
-        </div>
+        <!-- New Header Menu -->
+        <header class="game-header">
+            <div class="header-section">
+                <label for="languageSelect" data-translate="ui.language">Sprache:</label>
+                <select id="languageSelect">
+                    <option value="de">Deutsch</option>
+                    <option value="en">English</option>
+                    <option value="es">Español</option>
+                </select>
+            </div>
+            <div class="header-section">
+                <button id="saveGame" class="control-button save-button" data-translate="ui.save">Speichern</button>
+                <button id="loadGame" class="control-button load-button" data-translate="ui.load">Laden</button>
+            </div>
+            <div class="header-section map-selection">
+                <span data-translate="ui.map">Karte:</span>
+                <button id="map1" class="map-button" data-mapid="map1">Grüntal</button>
+                <button id="map2" class="map-button" data-mapid="map2">Felspass</button>
+                <button id="map3" class="map-button" data-mapid="map3">Sumpfland</button>
+            </div>
+            <div class="header-section">
+                <button id="helpButton" class="control-button help-button" data-translate="ui.help">Hilfe</button>
+            </div>
+        </header>
+
+        <!-- Title below header -->
+        <h1 data-translate="game.title">Medieval Defense</h1> <!-- Added translation key -->
+
+        <!-- Game Info remains near canvas -->
         <div class="game-info">
             <div class="resource-info">
-                <div>Leben: <span id="lives">10</span></div>
-                <div>Gold: <span id="gold">100</span></div>
-                <div>Welle: <span id="wave">0</span></div>
+                <div><span data-translate="ui.lives">Leben</span>: <span id="lives">10</span></div>
+                <div><span data-translate="ui.gold">Gold</span>: <span id="gold">100</span></div>
+                <div><span data-translate="ui.wave">Welle</span>: <span id="wave">0</span></div>
             </div>
             <div class="wave-timer">
-                <span id="wave-countdown">Bereit</span>
-                <button id="startWave" class="start-button">Welle starten</button>
+                <span id="wave-countdown" data-translate-ready="ui.waveReady">Bereit</span>
+                <button id="startWave" class="start-button" data-translate="ui.waveStart">Welle starten</button>
             </div>
         </div>
-
-        <!-- ** ADDED Save/Load Controls ** -->
-        <div class="game-controls">
-            <button id="saveGame" class="control-button save-button">Spiel speichern</button>
-            <button id="loadGame" class="control-button load-button">Spiel laden</button>
-        </div>
-        <!-- ***************************** -->
 
         <!-- PixiJS-Container -->
-        <div id="gameContainer" class="game-canvas-container"></div>
+        <!-- Recalculate canvas size based on new tileSize and grid dimensions -->
+        <!-- width = mapConfig.width * mapConfig.tileSize = 20 * 40 = 800 -->
+        <!-- height = mapConfig.height * mapConfig.tileSize = 13 * 40 = 520 -->
+        <div id="gameCanvasWrapper" class="game-canvas-wrapper" style="width: 800px; height: 520px;">
+            <div id="gameContainer" class="game-canvas-container"></div> <!-- Pixi canvas goes here -->
+        </div>
 
+
+        <!-- Upgrade Panel (remains positioned absolutely) -->
         <div id="upgradePanel" class="upgrade-panel">
+            <h3 id="upgradePanelTitle" data-translate="ui.towerInfo">Turm-Info</h3>
             <div id="towerInfo" class="tower-info"></div>
-            <div id="currentLevel" class="upgrade-progress">
-                <!-- Inhalt wird von JS generiert -->
-            </div>
+            <div id="currentLevel" class="upgrade-progress"></div>
             <div class="upgrade-buttons">
-                <!-- Button text now includes cost, spans inside are not strictly needed -->
-                <button id="upgradeDirectly" class="upgrade-button">
-                    Upgrade
-                    <!-- Spans removed from button content for simplicity -->
-                </button>
-                <button id="sellTower" class="upgrade-button sell-button">
-                    Verkaufen (<span id="sellValue">0</span> G)
-                </button>
-                <button id="closeUpgrade" class="upgrade-button close-button">Schließen</button>
+                <button id="upgradeDirectly" class="upgrade-button" data-translate-base="ui.upgrade">Upgrade</button>
+                <button id="sellTower" class="upgrade-button sell-button" data-translate-base="ui.sell">Verkaufen (<span
+                        id="sellValue">0</span> G)</button>
+                <button id="closeUpgrade" class="upgrade-button close-button"
+                    data-translate="ui.close">Schließen</button>
             </div>
         </div>
 
-        <!-- Radiales Turmauswahl-Menü (wie zuvor) -->
+        <!-- Radiales Turmauswahl-Menü (remains positioned absolutely) -->
         <div id="radialTowerMenu" class="radial-menu">
-            <!-- ... options ... -->
-            <div id="radialBasicTower" class="tower-option-radial" data-type="basic" data-cost="25">
+            <!-- Options updated with translation keys for tooltips -->
+            <div id="radialBasicTower" class="tower-option-radial" data-type="basic" data-cost="25"
+                data-tooltip-key="tower.basic.name">
                 <div class="tower-icon basic-tower"></div>
             </div>
-            <div id="radialSniperTower" class="tower-option-radial" data-type="sniper" data-cost="50">
+            <div id="radialSniperTower" class="tower-option-radial" data-type="sniper" data-cost="50"
+                data-tooltip-key="tower.sniper.name">
                 <div class="tower-icon sniper-tower"></div>
             </div>
-            <div id="radialSlowTower" class="tower-option-radial" data-type="slow" data-cost="40">
+            <div id="radialSlowTower" class="tower-option-radial" data-type="slow" data-cost="40"
+                data-tooltip-key="tower.slow.name">
                 <div class="tower-icon slow-tower"></div>
             </div>
-            <div id="radialBombTower" class="tower-option-radial" data-type="bomb" data-cost="75">
+            <div id="radialBombTower" class="tower-option-radial" data-type="bomb" data-cost="75"
+                data-tooltip-key="tower.bomb.name">
                 <div class="tower-icon bomb-tower"></div>
             </div>
-            <div id="radialLightningTower" class="tower-option-radial" data-type="lightning" data-cost="60">
+            <div id="radialLightningTower" class="tower-option-radial" data-type="lightning" data-cost="60"
+                data-tooltip-key="tower.lightning.name">
                 <div class="tower-icon lightning-tower"></div>
             </div>
-            <div id="radialCancelButton" class="tower-option-cancel">
+            <div id="radialCancelButton" class="tower-option-cancel" title="Cancel"> <!-- Title for tooltip -->
                 <div class="cancel-icon">✕</div>
             </div>
         </div>
-    </div>
 
-    <!-- Globale Configs -->
+        <!-- Simple Modal Popup -->
+        <div id="modalOverlay" class="modal-overlay" style="display: none;">
+            <div id="modalContent" class="modal-content">
+                <h2 id="modalTitle">Modal Title</h2>
+                <div id="modalBody">Modal message body.</div>
+                <button id="modalClose" class="modal-close-button" data-translate="ui.close">Close</button>
+            </div>
+        </div>
+
+    </div> <!-- End of game-container -->
+
+    <!-- Global Configs -->
     <script src="config/enemyTypes.js"></script>
     <script src="config/mapConfig.js"></script>
     <script src="config/mapDesigns.js"></script>
