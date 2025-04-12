@@ -1,3 +1,5 @@
+// --- START OF FILE ui.js ---
+
 // ui.js
 
 // UI Management and User Interactions
@@ -29,7 +31,7 @@ class GameUI {
         this.goldElement = document.getElementById('gold');
         this.waveElement = document.getElementById('wave');
         this.startWaveButton = document.getElementById('startWave');
-        this.countdownElement = document.getElementById('wave-countdown'); // ID korrigiert
+        this.countdownElement = document.getElementById('wave-countdown');
 
         // Radial-Menü-Element
         this.radialMenu = document.getElementById('radialTowerMenu');
@@ -60,11 +62,16 @@ class GameUI {
         this.towerInfo = document.getElementById('towerInfo');
         this.upgradeProgressDiv = document.getElementById('currentLevel'); // Container für den Pfad
         this.upgradeDirectlyButton = document.getElementById('upgradeDirectly');
-        this.targetLevelSpan = this.upgradeDirectlyButton.querySelector('#targetLevel'); // Im Button
-        this.upgradeCostSpan = this.upgradeDirectlyButton.querySelector('#upgradeCost'); // Im Button
+        // ** Spans removed from button for direct text content manipulation **
+        // this.targetLevelSpan = this.upgradeDirectlyButton.querySelector('#targetLevel');
+        // this.upgradeCostSpan = this.upgradeDirectlyButton.querySelector('#upgradeCost');
         this.sellTowerButton = document.getElementById('sellTower');
-        this.sellValueSpan = this.sellTowerButton.querySelector('#sellValue'); // Im Button
+        this.sellValueSpan = this.sellTowerButton.querySelector('#sellValue');
         this.closeUpgradeButton = document.getElementById('closeUpgrade');
+
+        // ** ADDED Save/Load Buttons **
+        this.saveGameButton = document.getElementById('saveGame'); // New
+        this.loadGameButton = document.getElementById('loadGame'); // New
 
         this.initEventListeners();
         this.updateUI();
@@ -100,7 +107,9 @@ class GameUI {
 
         // Kartenauswahlbuttons
         for (const [mapId, button] of Object.entries(this.mapButtons)) {
-            button.addEventListener('click', () => this.changeMap(mapId));
+            if (button) { // Check if button exists
+                button.addEventListener('click', () => this.changeMap(mapId));
+            }
         }
 
         // PixiJS-Container-Events
@@ -128,6 +137,14 @@ class GameUI {
             this.closeUpgradeButton.addEventListener('click', () => this.closeUpgradePanel());
         }
 
+        // ** ADDED Save/Load Button Listeners **
+        if (this.saveGameButton) {
+            this.saveGameButton.addEventListener('click', () => this.saveGame());
+        }
+        if (this.loadGameButton) {
+            this.loadGameButton.addEventListener('click', () => this.loadGame());
+        }
+
 
         // Event-Listener, um Menüs zu schließen, wenn außerhalb geklickt wird
         document.addEventListener('click', (e) => {
@@ -143,70 +160,101 @@ class GameUI {
         });
     }
 
+    // Modify changeMap to avoid resetting stats during load
     changeMap(mapId) {
-        // Karte nur ändern, wenn keine Feinde aktiv sind
+        if (!this.gameMap || !this.enemyManager || !this.towerManager) return; // Safety check
+
+        // Prevent changing map during an active wave (as before)
         if (this.enemyManager.enemies.length > 0 || this.enemyManager.enemiesRemaining > 0) {
             alert("Kann die Karte nicht während einer laufenden Welle wechseln!");
             return;
         }
 
-        // Kartenbutton-Auswahl aktualisieren
+        // Update map button selection
         for (const button of Object.values(this.mapButtons)) {
-            button.classList.remove('selected');
+            if (button) button.classList.remove('selected');
         }
-        this.mapButtons[mapId].classList.add('selected');
+        // Ensure the button exists before adding class
+        if (this.mapButtons[mapId]) {
+            this.mapButtons[mapId].classList.add('selected');
+        }
 
-        // Spielzustand zurücksetzen (ruft auch enemyManager.resetGame)
-        this.resetGame();
 
-        // Neue Karte setzen
+        // --- CORE CHANGE: Reset board, but NOT necessarily stats ---
+        this.resetGame(true); // Reset board state (enemies, towers, projectiles) but keep gold/lives/wave
+
+        // Set the new map design and draw it
         this.gameMap.setMap(mapId);
 
-        // Manager mit neuer Karte aktualisieren
+        // Update managers with the new map/path
         this.towerManager.updateMap(this.gameMap);
-        this.enemyManager.updatePath(this.gameMap.path);
+        this.enemyManager.updatePath(this.gameMap.path); // Crucial for new path
 
-        // Hintergrundfarbe des Canvas anpassen
+        // Update background color
         const bgColor = this.gameMap.currentMapDesign?.terrainColors?.empty || 0x7d934c;
         this.app.renderer.background.color = bgColor;
-        // Und des Containers dahinter
         const canvasContainer = document.getElementById('gameContainer')?.querySelector('.game-canvas-container');
         if (canvasContainer) {
             const cssColor = '#' + bgColor.toString(16).padStart(6, '0');
             canvasContainer.style.backgroundColor = cssColor;
         }
+
+        // Update UI (reflects potentially kept stats)
+        this.updateUI();
     }
 
-    resetGame() {
-        this.gold = 100;
-        this.lives = 10;
-
-        // Wichtig: Rufe die resetGame Methode des EnemyManagers auf!
-        this.enemyManager.resetGame(); // Stoppt Intervalle, leert Gegner etc.
-
-        // Türme entfernen
-        for (let i = this.towerManager.towers.length - 1; i >= 0; i--) {
-            this.towerManager.removeTower(i);
+    // Modify resetGame to optionally skip stat reset
+    resetGame(keepStats = false) {
+        if (!keepStats) {
+            this.gold = 100;
+            this.lives = 10;
+            if (this.enemyManager) this.enemyManager.waveNumber = 0; // Reset wave only if not keeping stats
         }
-        this.towerManager.towers = [];
 
-        // Projektile entfernen
-        for (let i = this.towerManager.projectiles.length - 1; i >= 0; i--) {
-            this.towerManager.removeProjectile(i);
+        // Stop enemy spawns and clear enemies
+        if (this.enemyManager) {
+            this.enemyManager.resetGame(); // Stops intervals, clears enemies etc.
         }
-        this.towerManager.projectiles = [];
 
-        // UI-Zustand zurücksetzen
+        // Remove towers
+        if (this.towerManager) {
+            for (let i = this.towerManager.towers.length - 1; i >= 0; i--) {
+                // Check if tower exists before removing - might have been cleaned up by load
+                if (this.towerManager.towers[i]) {
+                    this.towerManager.removeTower(i);
+                }
+            }
+            this.towerManager.towers = []; // Ensure array is empty
+
+
+            // Remove projectiles
+            for (let i = this.towerManager.projectiles.length - 1; i >= 0; i--) {
+                if (this.towerManager.projectiles[i]) {
+                    this.towerManager.removeProjectile(i);
+                }
+            }
+            this.towerManager.projectiles = [];
+        }
+
+
+        // UI state reset
         this.selectedTowerForUpgrade = null;
-        this.updateUI(); // Aktualisiert Gold, Leben, Welle (auf 0)
+        this.updateUI(); // Updates Gold, Lives, Wave based on current values
         if (this.countdownElement) this.countdownElement.textContent = 'Bereit';
 
-        // Menüs schließen
+        // Menus close
         this.hideRadialMenu();
         this.closeUpgradePanel();
 
-        // Start-Button wieder aktivieren (falls deaktiviert war)
-        if (this.startWaveButton) this.startWaveButton.disabled = false;
+        // Start button state
+        if (this.startWaveButton) this.startWaveButton.disabled = this.lives <= 0; // Re-enable based on current lives
+
+        // Reset map visuals might be needed if not changing map afterwards
+        if (this.gameMap && this.gameMap.gridContainer) this.gameMap.gridContainer.removeChildren();
+        if (this.gameMap && this.gameMap.decorationContainer) this.gameMap.decorationContainer.removeChildren();
+        // Re-drawing the map happens in changeMap or loadGame
+
+        console.log(`Game reset performed. Stats ${keepStats ? 'kept' : 'reset'}.`);
     }
 
 
@@ -216,12 +264,6 @@ class GameUI {
         // Klick-Position für die spätere Platzierung speichern (Spielkoordinaten)
         this.clickX = x;
         this.clickY = y;
-
-        // Kachelkoordinaten berechnen (nicht mehr direkt verwendet, aber ggf. nützlich)
-        // const tileX = Math.floor(x / this.gameMap.tileSize);
-        // const tileY = Math.floor(y / this.gameMap.tileSize);
-        // this.selectedTileX = tileX;
-        // this.selectedTileY = tileY;
 
         // Globale Fensterkoordinaten berechnen
         const rect = this.app.view.getBoundingClientRect();
@@ -339,9 +381,7 @@ class GameUI {
             }
         }
 
-        // Reichweitenkreise nur aktualisieren, wenn sich der Hover-Status geändert hat
-        // (Optimierung, um nicht bei jeder Mausbewegung neu zu zeichnen)
-        // Dies erfordert, den vorherigen Hover-Status zu speichern, oder einfach immer updaten:
+        // Reichweitenkreise aktualisieren
         this.towerManager.updateRangeCircles();
     }
 
@@ -375,7 +415,6 @@ class GameUI {
 
     scheduleNextWave() {
         // Bonus-Gold nur geben, wenn es eine *abgeschlossene* Welle gab
-        // (Da Wellen überlappen können, ist dies komplexer zu tracken. Einfacher Ansatz: Bonus bei jedem Callback)
         const waveBonus = 20 + this.enemyManager.waveNumber * 5;
         this.gold += waveBonus;
         this.updateUI();
@@ -453,7 +492,7 @@ class GameUI {
         this.upgradePanel.style.display = 'block';
 
         // Auswahl visuell hervorheben
-        this.towerManager.towers.forEach(t => t.selected = false);
+        this.towerManager.towers.forEach(t => { if (t) t.selected = false; }); // Add safety check for t
         tower.selected = true;
         this.towerManager.updateRangeCircles(); // Reichweite anzeigen
 
@@ -463,10 +502,9 @@ class GameUI {
 
     updateTowerInfo() {
         if (!this.selectedTowerForUpgrade || !this.towerInfo || !this.selectedTowerForUpgrade.tower || this.selectedTowerForUpgrade.tower.container._destroyed) {
-            this.closeUpgradePanel(); // Schließen, wenn Turm ungültig ist
+            this.closeUpgradePanel();
             return;
         }
-
 
         const { tower } = this.selectedTowerForUpgrade;
         const towerType = towerTypes[tower.type];
@@ -474,7 +512,6 @@ class GameUI {
 
         // Turm-Statistiken anzeigen
         let infoText = `<b>${towerType.name}</b>`; // Name fett
-        // infoText += `<hr>`; // Trennlinie
         infoText += `Level: ${tower.level}/${maxLevel}<br>`;
         infoText += `Schaden: ${tower.damage.toFixed(1)}<br>`;
         infoText += `Reichweite: ${tower.range}<br>`;
@@ -505,41 +542,49 @@ class GameUI {
         // Upgrade-Pfad-Visualisierung
         this.createUpgradePathUI();
 
-        // Upgrade-Button aktualisieren
+        // --- Upgrade-Button aktualisieren (MODIFIED) ---
         const targetLevel = tower.level + 1;
         let upgradeCost = 0;
         let nextUpgradeName = 'Max Level';
+        let canAfford = false;
 
         if (tower.level < maxLevel) {
-            upgradeCost = this.towerManager.getUpgradeCost(tower, targetLevel);
+            // Get cost for the NEXT level (index = current level)
+            upgradeCost = this.towerManager.getUpgradeCost(tower, targetLevel); // Use existing function
             nextUpgradeName = towerType.upgrades[tower.level].name || `Level ${targetLevel}`;
+            canAfford = this.gold >= upgradeCost;
         }
 
         if (this.upgradeDirectlyButton) {
             // Button Text
             let buttonText = tower.level < maxLevel ? `Upgrade: ${nextUpgradeName}` : 'Max Level';
+            // Directly set button text content (simpler than manipulating spans inside)
             this.upgradeDirectlyButton.textContent = buttonText;
 
-            // Kosten anzeigen (oder ausblenden)
-            if (this.upgradeCostSpan) {
-                if (tower.level < maxLevel) {
-                    this.upgradeCostSpan.textContent = ` (${upgradeCost} G)`;
-                    this.upgradeCostSpan.style.display = 'inline';
-                } else {
-                    this.upgradeCostSpan.style.display = 'none';
-                }
+            // Kosten anzeigen (append to button text)
+            if (tower.level < maxLevel) {
+                this.upgradeDirectlyButton.textContent += ` (${upgradeCost} G)`; // Append cost directly
             }
 
             // Button aktivieren/deaktivieren
-            this.upgradeDirectlyButton.disabled = (tower.level >= maxLevel) || (this.gold < upgradeCost);
+            this.upgradeDirectlyButton.disabled = (tower.level >= maxLevel) || !canAfford;
             this.upgradeDirectlyButton.removeAttribute('title'); // Sicherstellen, dass kein Tooltip angezeigt wird
+
+            // Optional: Add specific class if cannot afford
+            if (tower.level < maxLevel && !canAfford) {
+                this.upgradeDirectlyButton.classList.add('cant-afford');
+            } else {
+                this.upgradeDirectlyButton.classList.remove('cant-afford');
+            }
         }
+
 
         // Verkaufswert aktualisieren
         if (this.sellValueSpan) {
             this.sellValueSpan.textContent = tower.sellValue;
         }
     }
+
 
     createUpgradePathUI() {
         if (!this.selectedTowerForUpgrade || !this.upgradeProgressDiv) return;
@@ -613,7 +658,10 @@ class GameUI {
         if (this.selectedTowerForUpgrade) {
             // Nur abwählen, wenn der Turm noch existiert
             if (this.selectedTowerForUpgrade.tower && this.towerManager.towers.includes(this.selectedTowerForUpgrade.tower)) {
-                this.selectedTowerForUpgrade.tower.selected = false;
+                // Add check if tower still exists in the array
+                if (this.towerManager.towers.find(t => t === this.selectedTowerForUpgrade.tower)) {
+                    this.selectedTowerForUpgrade.tower.selected = false;
+                }
             }
             this.selectedTowerForUpgrade = null;
             this.towerManager.updateRangeCircles(); // Reichweitenkreise ausblenden
@@ -661,12 +709,195 @@ class GameUI {
             if (window.game) window.game.running = false;
 
             alert(`Game Over! Du hast Welle ${this.enemyManager.waveNumber} erreicht.`);
-            // UI zurücksetzen, aber Spiel nicht neustarten (außer durch Map-Wechsel)
-            this.resetGame(); // Setzt Gold/Leben zurück, leert Manager
-            // Buttons dauerhaft deaktivieren
+            // UI zurücksetzen, aber Spiel nicht neustarten (außer durch Map-Wechsel oder Laden)
+            // resetGame wird jetzt flexibler gehandhabt (durch loadGame/changeMap)
             if (this.startWaveButton) this.startWaveButton.disabled = true;
         }
     }
+
+    // --- Save/Load Game Functionality ---
+
+    saveGame() {
+        console.log("Saving game...");
+        if (!this.towerManager || !this.enemyManager || !this.gameMap) {
+            console.error("Cannot save: managers or map not initialized.");
+            alert("Fehler beim Speichern: Spielkomponenten nicht bereit.");
+            return;
+        }
+
+        const towersData = this.towerManager.towers.map(tower => {
+            // Check if tower and container are valid before accessing properties
+            if (!tower || !tower.container || tower.container._destroyed) {
+                console.warn("Skipping invalid tower during save.");
+                return null; // Skip this tower
+            }
+            return {
+                type: tower.type,
+                x: tower.x,
+                y: tower.y,
+                level: tower.level
+                // sellValue will be recalculated on load
+            };
+        }).filter(t => t !== null); // Filter out any null entries from invalid towers
+
+        const saveData = {
+            gold: this.gold,
+            lives: this.lives,
+            waveNumber: this.enemyManager.waveNumber,
+            mapId: mapConfig.currentMap, // Save the ID of the current map
+            towers: towersData,
+            timestamp: Date.now() // Optional: add a timestamp
+        };
+
+        try {
+            localStorage.setItem('medievalTowerDefenseSave', JSON.stringify(saveData));
+            console.log("Game saved successfully!", saveData);
+            alert("Spiel gespeichert!");
+            // Optional: Update UI to show last saved time
+        } catch (error) {
+            console.error("Error saving game to localStorage:", error);
+            alert(`Fehler beim Speichern: ${error.message}`);
+        }
+    }
+
+    loadGame() {
+        console.log("Loading game...");
+        const savedDataString = localStorage.getItem('medievalTowerDefenseSave');
+
+        if (!savedDataString) {
+            alert("Kein gespeichertes Spiel gefunden.");
+            return;
+        }
+
+        try {
+            const loadedData = JSON.parse(savedDataString);
+            console.log("Loaded data:", loadedData);
+
+            // Basic validation
+            if (typeof loadedData.gold !== 'number' || typeof loadedData.lives !== 'number' || typeof loadedData.waveNumber !== 'number' || typeof loadedData.mapId !== 'string' || !Array.isArray(loadedData.towers)) {
+                throw new Error("Ungültige Speicherdaten.");
+            }
+
+            // --- Apply Loaded State ---
+
+            // 1. Reset board and stop current activities
+            this.resetGame(true); // Pass flag to prevent stat reset
+
+            // 2. Set Map (This also clears containers and sets path)
+            this.gameMap.setMap(loadedData.mapId);
+            // Update managers with the new map/path
+            this.towerManager.updateMap(this.gameMap);
+            this.enemyManager.updatePath(this.gameMap.path);
+            // Update map button selection
+            for (const [mapId, button] of Object.entries(this.mapButtons)) {
+                if (button) button.classList.toggle('selected', mapId === loadedData.mapId);
+            }
+            // Update background color based on the loaded map
+            const bgColor = this.gameMap.currentMapDesign?.terrainColors?.empty || 0x7d934c;
+            this.app.renderer.background.color = bgColor;
+            const canvasContainer = document.getElementById('gameContainer')?.querySelector('.game-canvas-container');
+            if (canvasContainer) {
+                const cssColor = '#' + bgColor.toString(16).padStart(6, '0');
+                canvasContainer.style.backgroundColor = cssColor;
+            }
+
+
+            // 3. Set Stats
+            this.gold = loadedData.gold;
+            this.lives = loadedData.lives;
+            // Set wave number in enemy manager
+            this.enemyManager.waveNumber = loadedData.waveNumber;
+
+
+            // 4. Place and Upgrade Towers
+            loadedData.towers.forEach(savedTower => {
+                if (!savedTower) return; // Skip if tower data is null/invalid
+                // Place the base tower
+                const success = this.towerManager.addTower(savedTower.type, savedTower.x, savedTower.y);
+                if (success) {
+                    // Find the last added tower (assuming synchronous addition)
+                    const addedTower = this.towerManager.towers[this.towerManager.towers.length - 1];
+                    if (addedTower) {
+                        // Apply upgrades by setting level and stats directly
+                        if (savedTower.level > 0) {
+                            const towerType = towerTypes[addedTower.type];
+                            if (towerType && towerType.upgrades) {
+                                // Apply all upgrades up to the saved level
+                                for (let i = 0; i < savedTower.level; i++) {
+                                    if (i < towerType.upgrades.length) {
+                                        const upgradeData = towerType.upgrades[i];
+                                        addedTower.upgrades.push(upgradeData); // Keep track of applied upgrades
+
+                                        for (const [key, value] of Object.entries(upgradeData)) {
+                                            if (key !== 'name' && key !== 'cost' && key !== 'description') {
+                                                if (key.endsWith('Multiplier')) {
+                                                    const baseKey = key.replace('Multiplier', '');
+                                                    if (addedTower[baseKey] !== undefined) {
+                                                        addedTower[baseKey] *= value;
+                                                    }
+                                                } else {
+                                                    addedTower[key] = value;
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        console.warn(`Upgrade level ${i} not found for tower type ${addedTower.type} during load.`);
+                                    }
+                                }
+                                addedTower.level = savedTower.level; // Set the final level
+
+                                // Recalculate sell value
+                                addedTower.sellValue = Math.floor(towerType.cost * towerType.sellFactor);
+                                addedTower.upgrades.forEach(up => {
+                                    if (up && typeof up.cost === 'number') { // Add check for valid upgrade data
+                                        addedTower.sellValue += Math.floor(up.cost * towerType.sellFactor);
+                                    }
+                                });
+                            } else {
+                                console.warn(`Upgrades not defined for tower type ${addedTower.type} during load.`);
+                            }
+                        }
+                        // Redraw the tower with its loaded level/appearance
+                        this.towerManager.drawTower(addedTower);
+                    } else {
+                        console.warn("Could not find newly added tower for upgrade during load.");
+                    }
+                } else {
+                    console.warn(`Failed to place tower ${savedTower.type} at ${savedTower.x}, ${savedTower.y} during load.`);
+                }
+            });
+
+            // 5. Update UI completely
+            this.updateUI();
+            if (this.countdownElement) this.countdownElement.textContent = 'Bereit'; // Reset countdown display
+            if (this.startWaveButton) this.startWaveButton.disabled = this.lives <= 0; // Ensure button state is correct
+
+            // 6. Close any open panels
+            this.hideRadialMenu();
+            this.closeUpgradePanel();
+
+            // 7. Ensure game loop is running if it was stopped
+            if (window.game && !window.game.running && this.lives > 0) {
+                window.game.running = true;
+                // If ticker was stopped, restart it. If not, it will just continue.
+                // if(!this.app.ticker.started) this.app.ticker.start();
+            }
+
+
+            alert("Spiel geladen!");
+            console.log("Game loaded successfully.");
+
+        } catch (error) {
+            console.error("Error loading game from localStorage:", error);
+            alert(`Fehler beim Laden: ${error.message}. Speicherstand eventuell beschädigt.`);
+            localStorage.removeItem('medievalTowerDefenseSave'); // Remove potentially corrupted data
+            // Reset the game to a clean state
+            this.resetGame();
+            this.changeMap(mapConfig.currentMap || 'map1'); // Go back to default map
+        }
+    }
+
+
 }
 
 // Globale Hilfsfunktionen für EnemyManager Prototyp hinzufügen
@@ -701,7 +932,9 @@ EnemyManager.prototype.scheduleNextWave = function (delay, autoStartCallback) {
 
             // Automatisch starten, falls KEINE Welle läuft UND Spiel nicht vorbei
             // Beachte: waveInProgress prüft jetzt, ob *irgendeine* Welle läuft
-            if (!this.waveInProgress && window.game?.gameUI?.lives > 0) {
+            // Check if gameUI exists and has lives
+            const uiLives = window.game?.gameUI?.lives;
+            if (!this.waveInProgress && uiLives !== undefined && uiLives > 0) {
                 this.startNextWave(this.onWaveComplete); // Startet neue Welle
                 if (autoStartCallback) {
                     autoStartCallback(); // Informiert UI o.Ä.
@@ -715,3 +948,4 @@ EnemyManager.prototype.scheduleNextWave = function (delay, autoStartCallback) {
     // Starte den ersten Frame Request und speichere die ID
     this.autoStartTimer = requestAnimationFrame(update);
 };
+// --- END OF FILE ui.js ---

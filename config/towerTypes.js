@@ -165,7 +165,7 @@ const towerTypes = {
         sellFactor: 0.7,
         upgrades: [
             {
-                name: 'Erweiterter Radius',
+                name: 'Erweiterter Explosionsradius',
                 // description: 'Größerer Explosionsradius',
                 cost: 80,
                 splashRadius: 90

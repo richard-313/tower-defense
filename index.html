@@ -1,3 +1,4 @@
+<!-- --- START OF FILE index.html --- -->
 <!DOCTYPE html>
 <html lang="de">
 
@@ -9,7 +10,7 @@
     <!-- PixiJS einbinden -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
     <!-- Globale Hilfsfunktionen (z.B. drawStar) -->
-    <script src="utils.js"></script> <!-- Annahme: Eine Datei für globale Helfer -->
+    <script src="utils.js"></script>
 </head>
 
 <body>
@@ -27,10 +28,18 @@
                 <div>Welle: <span id="wave">0</span></div>
             </div>
             <div class="wave-timer">
-                <span id="wave-countdown">Bereit</span> <!-- Vereinfacht -->
+                <span id="wave-countdown">Bereit</span>
                 <button id="startWave" class="start-button">Welle starten</button>
             </div>
         </div>
+
+        <!-- ** ADDED Save/Load Controls ** -->
+        <div class="game-controls">
+            <button id="saveGame" class="control-button save-button">Spiel speichern</button>
+            <button id="loadGame" class="control-button load-button">Spiel laden</button>
+        </div>
+        <!-- ***************************** -->
+
         <!-- PixiJS-Container -->
         <div id="gameContainer" class="game-canvas-container"></div>
 
@@ -40,10 +49,10 @@
                 <!-- Inhalt wird von JS generiert -->
             </div>
             <div class="upgrade-buttons">
-                <!-- Spans sind noch da, aber Text wird dynamisch gesetzt -->
+                <!-- Button text now includes cost, spans inside are not strictly needed -->
                 <button id="upgradeDirectly" class="upgrade-button">
-                    Upgrade <span id="targetLevel" style="display: none;"></span>
-                    <span id="upgradeCost" style="display: none;"></span>
+                    Upgrade
+                    <!-- Spans removed from button content for simplicity -->
                 </button>
                 <button id="sellTower" class="upgrade-button sell-button">
                     Verkaufen (<span id="sellValue">0</span> G)
@@ -52,9 +61,9 @@
             </div>
         </div>
 
-        <!-- Radiales Turmauswahl-Menü -->
+        <!-- Radiales Turmauswahl-Menü (wie zuvor) -->
         <div id="radialTowerMenu" class="radial-menu">
-            <!-- Optionen wie zuvor -->
+            <!-- ... options ... -->
             <div id="radialBasicTower" class="tower-option-radial" data-type="basic" data-cost="25">
                 <div class="tower-icon basic-tower"></div>
             </div>
@@ -93,9 +102,10 @@
     <!-- Kern-Skripte -->
     <script src="map.js"></script>
     <script src="enemies.js"></script>
-    <script src="towers.js"></script> <!-- Wichtig: Enthält jetzt globale drawStar Funktion -->
-    <script src="ui.js"></script>
+    <script src="towers.js"></script>
+    <script src="ui.js"></script> <!-- UI loads after managers -->
     <script src="game.js"></script>
 </body>
 
 </html>
+<!-- --- END OF FILE index.html --- -->

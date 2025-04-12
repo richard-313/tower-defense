@@ -1,3 +1,5 @@
+/* --- START OF FILE styles.css --- */
+
 /* Global Styles */
 @import url('https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap');
 
@@ -164,7 +166,6 @@ canvas {
 }
 
 #wave-countdown {
-    /* Umbenannt für Konsistenz */
     font-size: 14px;
     /* Kleinere Schrift */
     color: var(--text-color);
@@ -205,6 +206,60 @@ canvas {
     cursor: not-allowed;
     transform: none;
     box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Game Controls (Save/Load) */
+.game-controls {
+    display: flex;
+    justify-content: center;
+    /* Center buttons */
+    gap: 10px;
+    /* Space between buttons */
+    margin-top: 10px;
+    /* Space above buttons */
+    margin-bottom: 5px;
+    /* Space below buttons */
+}
+
+.control-button {
+    padding: 6px 12px;
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: 'MedievalSharp', cursive;
+    font-size: 14px;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.control-button:hover {
+    background-color: var(--primary-color);
+    color: var(--background-color);
+    transform: translateY(-1px);
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+/* Optional: Specific colors for save/load */
+.save-button {
+    background-color: #27ae60;
+    /* Greenish */
+    color: white;
+}
+
+.save-button:hover {
+    background-color: #229954;
+}
+
+.load-button {
+    background-color: #2980b9;
+    /* Bluish */
+    color: white;
+}
+
+.load-button:hover {
+    background-color: #2471a3;
 }
 
 /* Tower Icons (Basis für alle Icons) */
@@ -400,12 +455,8 @@ canvas {
     /* Bessere Lesbarkeit bei kleiner Schrift */
 }
 
-/* Spezifisches Styling für Kosten-Span im Button */
-.upgrade-button #upgradeCost {
-    font-weight: normal;
-    opacity: 0.8;
-    font-size: 0.9em;
-}
+/* Spezifisches Styling für Kosten-Span im Button - NICHT MEHR VERWENDET*/
+/* .upgrade-button #upgradeCost { ... } */
 
 
 .upgrade-button:hover:not(:disabled) {
@@ -424,10 +475,20 @@ canvas {
 }
 
 /* Max Level Button Style */
-.upgrade-button:disabled[title="Max Level"] {
-    /* Oder spezifische Klasse setzen */
-    font-style: italic;
+/* .upgrade-button:disabled[title="Max Level"] { ... } */
+/* Title wird nicht mehr verwendet */
+
+/* Style for upgrade button when unaffordable */
+.upgrade-button.cant-afford {
+    background-color: #a18367;
+    /* Same as disabled */
+    color: #ddc;
+    /* Slightly different text color */
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.2);
 }
+
 
 .sell-button {
     background-color: #c0392b;
@@ -444,9 +505,6 @@ canvas {
 .close-button:hover:not(:disabled) {
     background-color: #636e72;
 }
-
-/* === ENTFERNT: Tooltip CSS === */
-/* .upgrade-button[title]:hover::after { ... } */
 
 
 /* Radial Tower Menu */
@@ -613,12 +671,13 @@ canvas {
 }
 
 .tower-option-radial.disabled::after {
-    content: "Gesperrt";
-    /* Anderer Text für deaktivierte */
+    content: "Zu teuer";
+    /* Text für deaktivierte Optionen wegen Goldmangel */
     color: #ffdddd;
     opacity: 1;
     /* Immer sichtbar bei disabled hover (optional) */
 }
+
 
 /* Cancel-Button im Zentrum des Radialmenüs */
 .tower-option-cancel {
@@ -666,3 +725,5 @@ canvas {
 .tower-option-cancel:hover .cancel-icon {
     color: #ffffff;
 }
+
+/* --- END OF FILE styles.css --- */
